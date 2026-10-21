@@ -10,6 +10,7 @@ import org.springframework.data.redis.core.DefaultTypedTuple;
 import org.springframework.util.CollectionUtils;
 
 import java.util.Set;
+import java.util.concurrent.Executor;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -88,7 +89,12 @@ public abstract class AbstractDelayQueueListen implements ApplicationRunner {
      * 监听队列
      */
     public void init() {
-        ThreadPoolUtil.getPool().execute(this::startDelayQueueMachine);
+        listenerExecutor().execute(this::startDelayQueueMachine);
+    }
+
+    /** Allows isolated tests to capture submission without starting the polling loop. */
+    protected Executor listenerExecutor() {
+        return ThreadPoolUtil.getPool();
     }
 
 }

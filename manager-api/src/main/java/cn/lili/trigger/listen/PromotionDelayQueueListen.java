@@ -7,6 +7,7 @@ import cn.lili.trigger.interfaces.TimeTrigger;
 import cn.lili.trigger.model.TimeTriggerMsg;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.ApplicationArguments;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
 /**
@@ -17,6 +18,7 @@ import org.springframework.stereotype.Component;
  * 2021-06-11 10:47
  */
 @Component
+@ConditionalOnProperty(name = "lili.promotion.delay-listener.enabled", havingValue = "true", matchIfMissing = true)
 public class PromotionDelayQueueListen extends AbstractDelayQueueListen {
 
     @Autowired

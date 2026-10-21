@@ -7,6 +7,7 @@ import org.eclipse.paho.client.mqttv3.*;
 import org.eclipse.paho.client.mqttv3.persist.MemoryPersistence;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 
@@ -21,6 +22,10 @@ public class MqttUtil {
 
     // 使用 SLF4J Logger，这是Java社区的最佳实践
     private static final Logger logger = LoggerFactory.getLogger(MqttUtil.class);
+
+    // Preserve existing environments; isolated runs must explicitly set false.
+    @Value("${lili.mqtt.enabled:true}")
+    private boolean enabled = true;
 
     private IMqttClient publisherClient;
     private IMqttClient subscriberClient;
@@ -39,6 +44,10 @@ public class MqttUtil {
      */
     @PostConstruct
     public void init() {
+        if (!enabled) {
+            logger.info("MQTT is disabled by lili.mqtt.enabled=false; no clients created.");
+            return;
+        }
         connect();
     }
 
@@ -46,7 +55,7 @@ public class MqttUtil {
         try {
             // ================== 1. 配置和连接发布者客户端 ==================
             // 注意：将初始化和连接逻辑放在一起
-            publisherClient = new MqttClient(MqttConfig.BROKER_URL, MqttConfig.CLIENT_ID_PUBLISHER, new MemoryPersistence());
+            publisherClient = createClient(MqttConfig.CLIENT_ID_PUBLISHER);
             // 自动重连
             MqttConnectOptions connOptsPub = createConnectOptions(true);
 
@@ -70,7 +79,7 @@ public class MqttUtil {
 
 
             // ================== 2. 配置和连接订阅者客户端 ==================
-            subscriberClient = new MqttClient(MqttConfig.BROKER_URL, MqttConfig.CLIENT_ID_SUBSCRIBER, new MemoryPersistence());
+            subscriberClient = createClient(MqttConfig.CLIENT_ID_SUBSCRIBER);
             // 自动重连
             MqttConnectOptions connOptsSub = createConnectOptions(true);
 
@@ -113,6 +122,10 @@ public class MqttUtil {
     /**
      * 辅助方法，创建统一的连接选项
      */
+    protected IMqttClient createClient(String clientId) throws MqttException {
+        return new MqttClient(MqttConfig.BROKER_URL, clientId, new MemoryPersistence());
+    }
+
     private MqttConnectOptions createConnectOptions(boolean autoReconnect) {
         MqttConnectOptions options = new MqttConnectOptions();
         options.setAutomaticReconnect(autoReconnect);
@@ -141,6 +154,9 @@ public class MqttUtil {
     }
 
     public void publishMessage(String topic, String payload, int qos, boolean retained) {
+        if (!enabled) {
+            throw new IllegalStateException("MQTT_DISABLED: lili.mqtt.enabled=false");
+        }
         // 在发布前检查连接状态是很好的习惯
         if (publisherClient == null || !publisherClient.isConnected()) {
             logger.warn("Publisher client is not connected. Message to topic '{}' will be queued if QoS > 0 and cleanSession=false.", topic);
@@ -164,19 +180,29 @@ public class MqttUtil {
     @PreDestroy
     public void disconnect() {
         logger.info("Disconnecting MQTT clients as the application is shutting down.");
+        closeClient(publisherClient, "Publisher");
+        publisherClient = null;
+        closeClient(subscriberClient, "Subscriber");
+        subscriberClient = null;
+    }
+
+    private void closeClient(IMqttClient client, String name) {
+        if (client == null) {
+            return;
+        }
         try {
-            if (publisherClient != null && publisherClient.isConnected()) {
-                publisherClient.disconnect();
-                publisherClient.close();
-                logger.info("Publisher disconnected.");
-            }
-            if (subscriberClient != null && subscriberClient.isConnected()) {
-                subscriberClient.disconnect();
-                subscriberClient.close();
-                logger.info("Subscriber disconnected.");
+            if (client.isConnected()) {
+                client.disconnect();
             }
         } catch (MqttException me) {
-            logger.error("Error during MQTT client disconnection: {}", me.getMessage(), me);
+            logger.error("Error disconnecting MQTT {}: {}", name, me.getMessage(), me);
+        } finally {
+            try {
+                // Failed or disconnected clients still own resources.
+                client.close();
+            } catch (MqttException me) {
+                logger.error("Error closing MQTT {}: {}", name, me.getMessage(), me);
+            }
         }
     }
 
