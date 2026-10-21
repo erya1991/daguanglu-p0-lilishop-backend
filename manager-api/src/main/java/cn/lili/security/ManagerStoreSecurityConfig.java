@@ -3,6 +3,7 @@ package cn.lili.security;
 import cn.lili.cache.Cache;
 import cn.lili.common.properties.IgnoredUrlsProperties;
 import cn.lili.common.security.CustomAccessDeniedHandler;
+import cn.lili.common.security.token.SecretKeyUtil;
 import cn.lili.modules.member.service.ClerkService;
 import cn.lili.modules.member.service.StoreMenuRoleService;
 import cn.lili.modules.member.token.StoreTokenGenerate;
@@ -33,6 +34,7 @@ public class ManagerStoreSecurityConfig {
     private final IgnoredUrlsProperties ignoredUrlsProperties;
     private final CustomAccessDeniedHandler accessDeniedHandler;
     private final Cache<String> cache;
+    private final SecretKeyUtil secretKeyUtil;
     private final CorsConfigurationSource corsConfigurationSource;
     private final StoreTokenGenerate storeTokenGenerate;
     private final StoreMenuRoleService storeMenuRoleService;
@@ -67,7 +69,7 @@ public class ManagerStoreSecurityConfig {
             .formLogin(f -> f.disable())
             .httpBasic(b -> b.disable())
             .addFilter(new StoreAuthenticationFilter(authManager, storeTokenGenerate,
-                    storeMenuRoleService, clerkService, cache));
+                    storeMenuRoleService, clerkService, cache, secretKeyUtil));
         return http.build();
     }
 
@@ -95,7 +97,7 @@ public class ManagerStoreSecurityConfig {
             .formLogin(f -> f.disable())
             .httpBasic(b -> b.disable())
             .addFilter(new ManagerAuthenticationFilter(authManager, menuService,
-                    managerTokenGenerate, cache, ignoredUrlsProperties));
+                    managerTokenGenerate, cache, ignoredUrlsProperties, secretKeyUtil));
         return http.build();
     }
 

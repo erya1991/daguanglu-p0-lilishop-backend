@@ -10,7 +10,7 @@ import cn.lili.common.security.token.SecretKeyUtil;
 import cn.lili.common.utils.StringUtils;
 import com.google.gson.Gson;
 import io.jsonwebtoken.Claims;
-import io.jsonwebtoken.Jwts;
+import org.springframework.web.context.support.WebApplicationContextUtils;
 import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.context.request.ServletRequestAttributes;
 import jakarta.servlet.http.HttpServletRequest;
@@ -61,8 +61,19 @@ public class UserContext {
      */
     public static AuthUser getAuthUser(Cache cache, String accessToken) {
         try {
-            AuthUser authUser = getAuthUser(accessToken);
-            assert authUser != null;
+            return getAuthUser(cache, accessToken, requestKey());
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    /** Explicit context-owned verifier for non-HTTP callers such as WebSocket endpoints. */
+    public static AuthUser getAuthUser(Cache cache, String accessToken, SecretKeyUtil secretKeyUtil) {
+        try {
+            AuthUser authUser = getAuthUser(accessToken, secretKeyUtil);
+            if (authUser == null) {
+                return null;
+            }
 
             if (!cache.hasKey(CachePrefix.ACCESS_TOKEN.getPrefix(authUser.getRole(), authUser.getId()) + accessToken)) {
                 throw new ServiceException(ResultCode.USER_AUTHORITY_ERROR);
@@ -89,13 +100,17 @@ public class UserContext {
      */
     public static AuthUser getAuthUser(String accessToken) {
         try {
+            return getAuthUser(accessToken, requestKey());
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    public static AuthUser getAuthUser(String accessToken, SecretKeyUtil secretKeyUtil) {
+        try {
             //获取token的信息
             Claims claims =
-                    Jwts.parser()
-                            .verifyWith(SecretKeyUtil.generalKeyByDecoders())
-                            .build()
-                            .parseSignedClaims(accessToken)
-                            .getPayload();
+                    secretKeyUtil.parseClaims(accessToken);
             //获取存储在claims中的用户信息
             String json = claims.get(SecurityEnum.USER_CONTEXT.getValue()).toString();
             return new Gson().fromJson(json, AuthUser.class);
@@ -104,6 +119,15 @@ public class UserContext {
         }
     }
 
+
+    private static SecretKeyUtil requestKey() {
+        if (!(RequestContextHolder.getRequestAttributes() instanceof ServletRequestAttributes attributes)) {
+            throw new IllegalStateException("JWT_REQUEST_CONTEXT_REQUIRED");
+        }
+        return WebApplicationContextUtils
+                .getRequiredWebApplicationContext(attributes.getRequest().getServletContext())
+                .getBean(SecretKeyUtil.class);
+    }
 
     /**
      * 写入邀请人信息

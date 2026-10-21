@@ -5,6 +5,7 @@ import cn.hutool.json.JSONUtil;
 import cn.lili.cache.Cache;
 import cn.lili.common.security.AuthUser;
 import cn.lili.common.security.context.UserContext;
+import cn.lili.common.security.token.SecretKeyUtil;
 import cn.lili.common.security.enums.UserEnums;
 import cn.lili.modules.im.config.CustomSpringConfigurator;
 import cn.lili.modules.im.entity.dos.ImMessage;
@@ -45,6 +46,7 @@ public class WebSocketServer {
     private final ImMessageService imMessageService;
     private final ImTalkService imTalkService;
     private final Cache cache;
+    private final SecretKeyUtil secretKeyUtil;
     private final JsonMapper jsonMapper;
 
     /**
@@ -55,7 +57,7 @@ public class WebSocketServer {
     @OnOpen
     public void onOpen(@PathParam("accessToken") String accessToken, Session session) {
 
-        AuthUser authUser = UserContext.getAuthUser(cache, accessToken);
+        AuthUser authUser = UserContext.getAuthUser(cache, accessToken, secretKeyUtil);
 
         String sessionId = UserEnums.STORE.equals(authUser.getRole()) ? authUser.getStoreId() : authUser.getId();
         //如果已有会话，则进行下线提醒。
@@ -79,7 +81,7 @@ public class WebSocketServer {
      */
     @OnClose
     public void onClose(@PathParam("accessToken") String accessToken) {
-        AuthUser authUser = UserContext.getAuthUser(cache, accessToken);
+        AuthUser authUser = UserContext.getAuthUser(cache, accessToken, secretKeyUtil);
         String sessionId = UserEnums.STORE.equals(authUser.getRole()) ? authUser.getStoreId() : authUser.getId();
         log.info("用户断开连接:{}", JSONUtil.toJsonStr(authUser));
         sessionPools.remove(sessionId);
@@ -110,7 +112,7 @@ public class WebSocketServer {
      */
     private void operation(String accessToken, MessageOperation messageOperation) {
 
-        AuthUser authUser = UserContext.getAuthUser(cache, accessToken);
+        AuthUser authUser = UserContext.getAuthUser(cache, accessToken, secretKeyUtil);
         switch (messageOperation.getOperationType()) {
             case PING:
                 break;

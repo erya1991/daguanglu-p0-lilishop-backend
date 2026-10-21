@@ -4,6 +4,7 @@ import cn.lili.common.enums.ResultCode;
 import cn.lili.common.exception.ServiceException;
 import cn.lili.common.security.AuthUser;
 import cn.lili.common.security.context.UserContext;
+import cn.lili.common.security.token.SecretKeyUtil;
 import cn.lili.common.security.enums.UserEnums;
 import cn.lili.modules.im.entity.dos.ImMessage;
 import cn.lili.modules.im.entity.dto.MessageQueryParams;
@@ -33,11 +34,13 @@ import java.util.Objects;
 @RequiredArgsConstructor(onConstructor = @__(@Autowired))
 public class ImMessageServiceImpl extends ServiceImpl<ImMessageMapper, ImMessage> implements ImMessageService {
 
+    private final SecretKeyUtil secretKeyUtil;
+
 
     @Override
     public void read(String talkId, String accessToken) {
         LambdaUpdateWrapper<ImMessage> updateWrapper = new LambdaUpdateWrapper<>();
-        String userId = UserContext.getAuthUser(accessToken).getId();
+        String userId = UserContext.getAuthUser(accessToken, secretKeyUtil).getId();
         updateWrapper.eq(ImMessage::getTalkId, talkId);
         updateWrapper.eq(ImMessage::getToUser, userId);
         updateWrapper.set(ImMessage::getIsRead, true);
@@ -46,7 +49,7 @@ public class ImMessageServiceImpl extends ServiceImpl<ImMessageMapper, ImMessage
 
     @Override
     public List<ImMessage> unReadMessages(String accessToken) {
-        String userId = UserContext.getAuthUser(accessToken).getId();
+        String userId = UserContext.getAuthUser(accessToken, secretKeyUtil).getId();
         LambdaQueryWrapper<ImMessage> queryWrapper = new LambdaQueryWrapper<>();
         queryWrapper.eq(ImMessage::getToUser, userId);
         queryWrapper.eq(ImMessage::getIsRead, false);
@@ -55,7 +58,7 @@ public class ImMessageServiceImpl extends ServiceImpl<ImMessageMapper, ImMessage
 
     @Override
     public List<ImMessage> historyMessage(String accessToken, String to) {
-        String userId = UserContext.getAuthUser(accessToken).getId();
+        String userId = UserContext.getAuthUser(accessToken, secretKeyUtil).getId();
         LambdaQueryWrapper<ImMessage> queryWrapper = new LambdaQueryWrapper<>();
         queryWrapper.and(i -> i.eq(ImMessage::getToUser, userId).and(j -> j.eq(ImMessage::getFromUser, to)));
         queryWrapper.or(i -> i.eq(ImMessage::getToUser, to).and(j -> j.eq(ImMessage::getFromUser, userId)));
@@ -65,7 +68,7 @@ public class ImMessageServiceImpl extends ServiceImpl<ImMessageMapper, ImMessage
 
     @Override
     public Boolean hasNewMessage(String accessToken) {
-        String userId = UserContext.getAuthUser(accessToken).getId();
+        String userId = UserContext.getAuthUser(accessToken, secretKeyUtil).getId();
         LambdaQueryWrapper<ImMessage> queryWrapper = new LambdaQueryWrapper<>();
         queryWrapper.eq(ImMessage::getIsRead, false);
         queryWrapper.eq(ImMessage::getToUser, userId);

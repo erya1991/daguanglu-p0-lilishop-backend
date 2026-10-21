@@ -30,6 +30,8 @@ public class TokenUtil {
     private JWTTokenProperties tokenProperties;
     @Autowired
     private Cache cache;
+    @Autowired
+    private SecretKeyUtil secretKeyUtil;
 
     /**
      * 构建token
@@ -65,11 +67,7 @@ public class TokenUtil {
 
         Claims claims;
         try {
-            claims = Jwts.parser()
-                    .verifyWith(SecretKeyUtil.generalKeyByDecoders())
-                    .build()
-                    .parseSignedClaims(oldRefreshToken)
-                    .getPayload();
+            claims = secretKeyUtil.parseClaims(oldRefreshToken);
         } catch (ExpiredJwtException | UnsupportedJwtException | MalformedJwtException | SignatureException |
                  IllegalArgumentException e) {
             //token 过期 认证失败等
@@ -132,7 +130,7 @@ public class TokenUtil {
                 //失效时间 当前时间+过期分钟
                 .expiration(new Date(System.currentTimeMillis() + expirationTime * 60 * 1000))
                 //签名算法和密钥
-                .signWith(SecretKeyUtil.generalKey())
+                .signWith(secretKeyUtil.generalKey(), Jwts.SIG.HS256)
                 .compact();
     }
 }

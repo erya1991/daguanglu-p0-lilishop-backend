@@ -3,6 +3,7 @@ package cn.lili.security;
 import cn.lili.cache.Cache;
 import cn.lili.common.properties.IgnoredUrlsProperties;
 import cn.lili.common.security.CustomAccessDeniedHandler;
+import cn.lili.common.security.token.SecretKeyUtil;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -28,6 +29,7 @@ public class BuyerSecurityConfig {
     private final IgnoredUrlsProperties ignoredUrlsProperties;
     private final CustomAccessDeniedHandler accessDeniedHandler;
     private final Cache<String> cache;
+    private final SecretKeyUtil secretKeyUtil;
     private final CorsConfigurationSource corsConfigurationSource;
 
     @Bean
@@ -56,7 +58,7 @@ public class BuyerSecurityConfig {
                         cn.lili.common.utils.ResponseUtil.resultMap(false, 403, "未登录或token失效"))))
             .formLogin(f -> f.disable())
             .httpBasic(b -> b.disable())
-            .addFilter(new BuyerAuthenticationFilter(authManager, cache, ignoredUrlsProperties));
+            .addFilter(new BuyerAuthenticationFilter(authManager, cache, ignoredUrlsProperties, secretKeyUtil));
         return http.build();
     }
 

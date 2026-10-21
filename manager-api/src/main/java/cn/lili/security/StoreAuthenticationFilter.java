@@ -17,7 +17,6 @@ import cn.lili.modules.member.token.StoreTokenGenerate;
 import com.google.gson.Gson;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.ExpiredJwtException;
-import io.jsonwebtoken.Jwts;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.authentication.AuthenticationManager;
@@ -47,6 +46,8 @@ public class StoreAuthenticationFilter extends BasicAuthenticationFilter {
 
     private final Cache cache;
 
+    private final SecretKeyUtil secretKeyUtil;
+
     private final StoreTokenGenerate storeTokenGenerate;
 
     private final StoreMenuRoleService storeMenuRoleService;
@@ -57,12 +58,14 @@ public class StoreAuthenticationFilter extends BasicAuthenticationFilter {
                                      StoreTokenGenerate storeTokenGenerate,
                                      StoreMenuRoleService storeMenuRoleService,
                                      ClerkService clerkService,
-                                     Cache cache) {
+                                     Cache cache,
+                                     SecretKeyUtil secretKeyUtil) {
         super(authenticationManager);
         this.storeTokenGenerate = storeTokenGenerate;
         this.storeMenuRoleService = storeMenuRoleService;
         this.clerkService = clerkService;
         this.cache = cache;
+        this.secretKeyUtil = java.util.Objects.requireNonNull(secretKeyUtil, "JWT_KEY_COMPONENT_REQUIRED");
     }
 
     @SneakyThrows
@@ -100,11 +103,7 @@ public class StoreAuthenticationFilter extends BasicAuthenticationFilter {
 
         try {
             Claims claims =
-                    Jwts.parser()
-                            .verifyWith(SecretKeyUtil.generalKeyByDecoders())
-                            .build()
-                            .parseSignedClaims(jwt)
-                            .getPayload();
+                    secretKeyUtil.parseClaims(jwt);
             //获取存储在claims中的用户信息
             String json = claims.get(SecurityEnum.USER_CONTEXT.getValue()).toString();
             AuthUser authUser = new Gson().fromJson(json, AuthUser.class);
@@ -122,9 +121,9 @@ public class StoreAuthenticationFilter extends BasicAuthenticationFilter {
             outputInvalidToken(response);
             return null;
         } catch (ExpiredJwtException e) {
-            log.debug("user analysis exception:", e);
+            log.debug("JWT authentication rejected: {}", e.getClass().getSimpleName());
         } catch (Exception e) {
-            log.error("user analysis exception:", e);
+            log.error("JWT authentication rejected: {}", e.getClass().getSimpleName());
         }
         outputInvalidToken(response);
         return null;

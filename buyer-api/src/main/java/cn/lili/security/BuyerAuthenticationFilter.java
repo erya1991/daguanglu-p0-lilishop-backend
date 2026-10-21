@@ -12,7 +12,6 @@ import cn.lili.common.utils.ResponseUtil;
 import com.google.gson.Gson;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.ExpiredJwtException;
-import io.jsonwebtoken.Jwts;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -44,6 +43,8 @@ public class BuyerAuthenticationFilter extends BasicAuthenticationFilter {
 
     private final Cache cache;
 
+    private final SecretKeyUtil secretKeyUtil;
+
     private final IgnoredUrlsProperties ignoredUrlsProperties;
 
     /**
@@ -55,9 +56,11 @@ public class BuyerAuthenticationFilter extends BasicAuthenticationFilter {
      */
     public BuyerAuthenticationFilter(AuthenticationManager authenticationManager,
                                      Cache cache,
-                                     IgnoredUrlsProperties ignoredUrlsProperties) {
+                                     IgnoredUrlsProperties ignoredUrlsProperties,
+                                     SecretKeyUtil secretKeyUtil) {
         super(authenticationManager);
         this.cache = cache;
+        this.secretKeyUtil = java.util.Objects.requireNonNull(secretKeyUtil, "JWT_KEY_COMPONENT_REQUIRED");
         this.ignoredUrlsProperties = ignoredUrlsProperties;
     }
 
@@ -91,7 +94,7 @@ public class BuyerAuthenticationFilter extends BasicAuthenticationFilter {
                 ResponseUtil.output(response, 403, ResponseUtil.resultMap(false, 403, "登录已失效，请重新登录"));
             }
         } catch (Exception e) {
-            log.error("BuyerAuthenticationFilter-> member authentication exception:", e);
+            log.error("Buyer authentication failed: {}", e.getClass().getSimpleName());
             if (!response.isCommitted()) {
                 chain.doFilter(request, response);
             }
@@ -109,11 +112,7 @@ public class BuyerAuthenticationFilter extends BasicAuthenticationFilter {
 
         try {
             Claims claims =
-                    Jwts.parser()
-                            .verifyWith(SecretKeyUtil.generalKeyByDecoders())
-                            .build()
-                            .parseSignedClaims(jwt)
-                            .getPayload();
+                    secretKeyUtil.parseClaims(jwt);
             // 获取存储在claims中的用户信息
             String json = claims.get(SecurityEnum.USER_CONTEXT.getValue()).toString();
             AuthUser authUser = new Gson().fromJson(json, AuthUser.class);
@@ -128,9 +127,9 @@ public class BuyerAuthenticationFilter extends BasicAuthenticationFilter {
                 return authentication;
             }
         } catch (ExpiredJwtException e) {
-            log.debug("user analysis exception:", e);
+            log.debug("JWT authentication rejected: {}", e.getClass().getSimpleName());
         } catch (Exception e) {
-            log.error("user analysis exception:", e);
+            log.error("JWT authentication rejected: {}", e.getClass().getSimpleName());
         }
         return null;
     }
