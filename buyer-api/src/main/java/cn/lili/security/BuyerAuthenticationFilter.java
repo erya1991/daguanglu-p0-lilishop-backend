@@ -86,6 +86,16 @@ public class BuyerAuthenticationFilter extends BasicAuthenticationFilter {
         }
         // Narrow identity routes are protected even if an external ignored.urls is too broad.
         String requestUri = request.getRequestURI();
+        if(SessionRoutes.residentWritePath(requestUri)) {
+            SecurityContextHolder.clearContext();
+            ResponseUtil.output(response,403,ResponseUtil.resultMap(false,403,"SESSION_REJECTED"));
+            return;
+        }
+        if ("POST".equals(request.getMethod()) && SessionRoutes.RESIDENT_LOGIN.equals(requestUri)) {
+            SecurityContextHolder.clearContext(); // Only the body Code establishes this login identity.
+            chain.doFilter(request, response);
+            return;
+        }
         for (String url : ignoredUrlsProperties.getUrls()) {
             if (!SessionRoutes.requiresAuthentication(request) && PatternMatchUtils.simpleMatch(url, requestUri)) {
                 chain.doFilter(request, response);

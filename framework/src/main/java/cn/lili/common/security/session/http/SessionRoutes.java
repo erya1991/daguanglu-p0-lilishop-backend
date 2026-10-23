@@ -5,6 +5,11 @@ import jakarta.servlet.http.HttpServletRequest;
 
 /** Only Session transport and existing identity reads are activated in P02-2. */
 public final class SessionRoutes {
+    public static final String RESIDENT_LOGIN = "/buyer/passport/connect/miniProgram/login";
+    public static final String RESIDENT_EDIT = "/buyer/passport/member/editOwn";
+    public static final String RESIDENT_PHONE = "/buyer/passport/member/wechat-phone";
+    public static final String RESIDENT_AVATAR = "/buyer/common/upload/avatar";
+    public static final String RESIDENT_LINK = "/buyer/passport/connect/miniProgram/link-existing";
     public static final String APPLICANT = "/store/passport/applicant";
     private SessionRoutes() { }
 
@@ -21,7 +26,7 @@ public final class SessionRoutes {
 
     public static boolean requiresAuthentication(HttpServletRequest request) {
         String path = request.getRequestURI();
-        return path.equals("/buyer/passport/member") || path.equals("/manager/passport/user/info")
+        return residentWritePath(path) || path.equals("/buyer/passport/member") || path.equals("/manager/passport/user/info")
                 || path.equals("/manager/permission/menu/memberMenu")
                 || path.equals("/store/member/user") || path.equals("/store/member/user/info")
                 || path.equals(logout(SessionDomain.RESIDENT)) || path.equals(logout(SessionDomain.STORE))
@@ -30,6 +35,7 @@ public final class SessionRoutes {
 
     public static boolean allowed(SessionDomain domain, String method, String path) {
         if (method.equals("POST") && path.equals(logout(domain))) return true;
+        if(domain==SessionDomain.RESIDENT && residentWritePath(path)) return method.equals(path.equals(RESIDENT_EDIT)?"PUT":"POST");
         if (!method.equals("GET")) return false;
         return switch (domain) {
             case RESIDENT -> path.equals("/buyer/passport/member");
@@ -37,6 +43,10 @@ public final class SessionRoutes {
             case STORE -> path.equals("/store/member/user") || path.equals("/store/member/user/info");
             case MANAGER -> path.equals("/manager/passport/user/info") || path.equals("/manager/permission/menu/memberMenu");
         };
+    }
+
+    public static boolean residentWritePath(String path) {
+        return path.equals(RESIDENT_EDIT) || path.equals(RESIDENT_PHONE) || path.equals(RESIDENT_AVATAR) || path.equals(RESIDENT_LINK);
     }
 
     public static boolean isLegacyRefresh(String method, String path, SessionDomain domain) {

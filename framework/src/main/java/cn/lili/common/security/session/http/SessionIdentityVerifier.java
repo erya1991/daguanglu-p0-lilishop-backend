@@ -10,4 +10,7 @@ import cn.lili.common.security.session.SessionIdentity;
 @FunctionalInterface
 public interface SessionIdentityVerifier {
     void check(SessionIdentity identity);
+    default void checkHandoff(cn.lili.common.security.session.SessionHandoff handoff) {
+        throw new cn.lili.common.security.session.SessionException(cn.lili.common.security.session.SessionException.Code.AUTHORIZATION_REQUIRED);
+    }
 }

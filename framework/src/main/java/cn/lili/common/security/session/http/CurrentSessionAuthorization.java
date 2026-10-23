@@ -46,6 +46,15 @@ public class CurrentSessionAuthorization implements SessionAuthorization {
     @Override
     public void check(SessionIdentity identity) { current(identity); }
 
+    @Override public void checkHandoff(SessionHandoff handoff) {
+        require(handoff!=null && handoff.target().domain()==SessionDomain.RESIDENT
+                && applications.application(SessionDomain.RESIDENT).equals(handoff.target().application()));
+        var verifier=verifiers.getIfUnique();
+        if(verifier==null) throw new SessionException(AUTHORIZATION_REQUIRED);
+        verifier.checkHandoff(handoff);
+        member(handoff.target().subject());
+    }
+
     public AuthUser current(SessionIdentity identity) {
         require(applications.application(identity.domain()).equals(identity.application()));
         if (identity.domain() == SessionDomain.MANAGER) {

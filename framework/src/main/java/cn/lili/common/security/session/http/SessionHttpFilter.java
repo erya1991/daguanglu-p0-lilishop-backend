@@ -44,6 +44,11 @@ public final class SessionHttpFilter extends OncePerRequestFilter {
         String method = request.getMethod();
         String token = request.getHeader(SecurityEnum.HEADER_TOKEN.getValue());
         try {
+            if (domain == SessionDomain.RESIDENT && method.equals("POST") && path.equals(SessionRoutes.RESIDENT_LOGIN)) {
+                SecurityContextHolder.clearContext(); // Fresh Code login is independent of an old Access header.
+                chain.doFilter(request, response);
+                return;
+            }
             // Exact POST endpoints authenticate their body Refresh, not a possibly expired Access header.
             if (path.equals(SessionRoutes.refresh(domain))) {
                 require(method.equals("POST"));
@@ -64,6 +69,7 @@ public final class SessionHttpFilter extends OncePerRequestFilter {
                 throw new SessionException(INVALID_CREDENTIAL);
             }
             if (!SessionProtocol.isStage0(token)) {
+                require(!SessionRoutes.residentWritePath(path)); // No anonymous/legacy JWT downgrade into R02 writes.
                 require(domain != SessionDomain.APPLICANT); // No legacy Applicant fallback.
                 chain.doFilter(request, response);
                 return;

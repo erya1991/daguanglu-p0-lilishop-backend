@@ -49,6 +49,8 @@ public class MemberBuyerController {
     @Autowired
     private MemberService memberService;
     @Autowired
+    private ResidentProfileController residentProfiles;
+    @Autowired
     private SmsUtil smsUtil;
     @Autowired
     private VerificationService verificationService;
@@ -225,9 +227,9 @@ public class MemberBuyerController {
 
     @Operation(summary = "获取当前登录用户接口")
     @GetMapping
-    public ResultMessage<Member> getUserInfo() {
-
-        return ResultUtil.data(memberService.getUserInfo());
+    public void getUserInfo(jakarta.servlet.http.HttpServletRequest request,jakarta.servlet.http.HttpServletResponse response) {
+        // Stage 0 returns only the explicit private-profile projection. No Member entity serialization.
+        residentProfiles.read(request,response);
     }
 
     @Operation(summary = "通过短信重置密码")
@@ -261,9 +263,8 @@ public class MemberBuyerController {
 
     @Operation(summary = "修改用户自己资料")
     @PutMapping("/editOwn")
-    public ResultMessage<Member> editOwn(MemberEditDTO memberEditDTO) {
-
-        return ResultUtil.data(memberService.editOwn(memberEditDTO));
+    public void editOwn(jakarta.servlet.http.HttpServletRequest request,jakarta.servlet.http.HttpServletResponse response) {
+        residentProfiles.edit(request,response);
     }
 
     @Operation(summary = "修改密码")

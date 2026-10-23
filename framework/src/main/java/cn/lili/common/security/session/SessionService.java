@@ -28,10 +28,14 @@ public final class SessionService {
     @Autowired
     public SessionService(RedisSessionStore store, SecretKeyUtil keys,
                           ObjectProvider<SessionAuthorization> providers) {
-        this(store, keys, identity -> {
-            SessionAuthorization current = providers.getIfUnique();
-            if (current == null) throw new SessionException(AUTHORIZATION_REQUIRED);
-            current.check(identity);
+        this(store, keys, new SessionAuthorization() {
+            private SessionAuthorization current() {
+                var current=providers.getIfUnique();
+                if(current==null) throw new SessionException(AUTHORIZATION_REQUIRED);
+                return current;
+            }
+            public void check(SessionIdentity identity) { current().check(identity); }
+            public void checkHandoff(SessionHandoff handoff) { current().checkHandoff(handoff); }
         }, Clock.systemUTC());
     }
 
@@ -46,6 +50,36 @@ public final class SessionService {
     public SessionTokens create(SessionIdentity trustedIdentity) {
         if (trustedIdentity == null) throw new SessionException(INVALID_CONTEXT);
         authorize(trustedIdentity);
+        return createAuthorized(trustedIdentity);
+    }
+
+    /** Narrow P03 handoff: normal Access/Refresh still reject the persisted PENDING mapping.
+     * Caller commits DONE/ACTIVE before returning these tokens. No generic bypass or new Refresh path. */
+    public SessionTokens handoff(SessionHandoff change) {
+        try {
+            if(change==null || change.source()==null || change.target()==null
+                    || change.source().domain()!=SessionDomain.RESIDENT || change.target().domain()!=SessionDomain.RESIDENT
+                    || !change.source().application().equals(change.target().application())
+                    || !Objects.equals(change.source().bindingId(),change.target().bindingId())
+                    || change.source().subject().equals(change.target().subject())
+                    || change.target().bindingVersion()!=change.source().bindingVersion()+1
+                    || change.sourceSid()==null || !change.sourceSid().matches("[a-f0-9]{32}")
+                    || change.requestId()==null || authorization==null) throw new SessionException(INVALID_CONTEXT);
+            authorization.checkHandoff(change); // Exact persisted proof/consent/source sid/version checked.
+            var old=store.load(change.source().domain(),change.source().application(),change.sourceSid());
+            if(old!=null) {
+                if(!old.identity().equals(change.source()) || !old.sid().equals(change.sourceSid())) throw new SessionException(DENIED);
+                // Expired Access and all other source sids are invalidated by mapping version, not a key scan.
+                if(old.status()==SessionRecord.Status.ACTIVE && now()<old.accessExpiresAt() && !store.revoke(old)) {
+                    throw new SessionException(STORE_UNAVAILABLE);
+                }
+            }
+            return createAuthorized(change.target());
+        } catch(SessionException e) {throw new SessionException(e.getCode());}
+        catch(RuntimeException e) {throw new SessionException(DENIED);}
+    }
+
+    private SessionTokens createAuthorized(SessionIdentity trustedIdentity) {
         long now = now();
         long absolute = now + trustedIdentity.domain().absoluteLifetime().toMillis();
         long accessExpires = Math.min(now + ACCESS_MILLIS, absolute);

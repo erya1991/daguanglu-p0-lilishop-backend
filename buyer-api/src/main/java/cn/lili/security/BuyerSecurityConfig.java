@@ -52,6 +52,10 @@ public class BuyerSecurityConfig {
         String[] ignored = ignoredUrlsProperties.getUrls().toArray(new String[0]);
         http.securityMatcher("/buyer/**")
             .authorizeHttpRequests(a -> a
+                .requestMatchers(HttpMethod.POST, SessionRoutes.RESIDENT_LOGIN).permitAll()
+                .requestMatchers(SessionRoutes.RESIDENT_LOGIN).denyAll()
+                .requestMatchers(req -> SessionRoutes.residentWritePath(req.getRequestURI()))
+                    .hasAuthority("ROLE_STAGE0_RESIDENT")
                 .requestMatchers(HttpMethod.POST, SessionRoutes.refresh(SessionDomain.RESIDENT)).permitAll()
                 .requestMatchers(SessionRoutes::requiresAuthentication).authenticated()
                 .requestMatchers(ignored).permitAll()

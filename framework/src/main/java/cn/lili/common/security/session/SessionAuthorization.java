@@ -10,4 +10,7 @@ package cn.lili.common.security.session;
 @FunctionalInterface
 public interface SessionAuthorization {
     void check(SessionIdentity identity);
+    default void checkHandoff(SessionHandoff handoff) {
+        throw new SessionException(SessionException.Code.AUTHORIZATION_REQUIRED);
+    }
 }
