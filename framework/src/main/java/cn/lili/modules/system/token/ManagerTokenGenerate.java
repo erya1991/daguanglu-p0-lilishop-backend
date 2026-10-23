@@ -59,7 +59,7 @@ public class ManagerTokenGenerate extends AbstractTokenGenerate<AdminUser> {
 
     @Override
     public Token refreshToken(String refreshToken) {
-        return tokenUtil.refreshToken(refreshToken);
+        return tokenUtil.refreshToken(refreshToken, UserEnums.MANAGER);
     }
 
     /**

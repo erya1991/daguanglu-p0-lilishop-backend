@@ -7,6 +7,8 @@ import cn.lili.common.exception.ServiceException;
 import cn.lili.common.security.AuthUser;
 import cn.lili.common.security.enums.SecurityEnum;
 import cn.lili.common.security.token.SecretKeyUtil;
+import cn.lili.common.security.session.http.SessionHttpFilter;
+import org.springframework.security.core.context.SecurityContextHolder;
 import cn.lili.common.utils.StringUtils;
 import com.google.gson.Gson;
 import io.jsonwebtoken.Claims;
@@ -30,11 +32,10 @@ public class UserContext {
      * @return 授权用户
      */
     public static AuthUser getCurrentUser() {
-        if (RequestContextHolder.getRequestAttributes() != null) {
-            HttpServletRequest request = ((ServletRequestAttributes) RequestContextHolder.getRequestAttributes()).getRequest();
-            String accessToken = request.getHeader(SecurityEnum.HEADER_TOKEN.getValue());
-            return getAuthUser(accessToken);
-        }
+        var authentication = SecurityContextHolder.getContext().getAuthentication();
+        if (authentication == null || !authentication.isAuthenticated()) return null;
+        if (authentication.getDetails() instanceof SessionHttpFilter.Principal principal) return principal.user();
+        if (authentication.getDetails() instanceof AuthUser user) return user;
         return null;
     }
 
@@ -99,13 +100,11 @@ public class UserContext {
      * @return 授权用户
      */
     public static AuthUser getAuthUser(String accessToken) {
-        try {
-            return getAuthUser(accessToken, requestKey());
-        } catch (Exception e) {
-            return null;
-        }
+        return accessToken != null && accessToken.equals(getCurrentUserToken()) ? getCurrentUser() : null;
     }
 
+    /** Legacy IM decoding only; NOT a business authorization API. HTTP uses the verified context above. */
+    @Deprecated
     public static AuthUser getAuthUser(String accessToken, SecretKeyUtil secretKeyUtil) {
         try {
             //获取token的信息

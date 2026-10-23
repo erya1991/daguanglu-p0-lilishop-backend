@@ -4,6 +4,11 @@ import cn.lili.cache.Cache;
 import cn.lili.common.properties.IgnoredUrlsProperties;
 import cn.lili.common.security.CustomAccessDeniedHandler;
 import cn.lili.common.security.token.SecretKeyUtil;
+import cn.lili.common.security.session.SessionDomain;
+import cn.lili.common.security.session.SessionService;
+import cn.lili.common.security.session.http.*;
+import org.springframework.http.HttpMethod;
+import org.springframework.security.web.authentication.www.BasicAuthenticationFilter;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -31,6 +36,9 @@ public class BuyerSecurityConfig {
     private final Cache<String> cache;
     private final SecretKeyUtil secretKeyUtil;
     private final CorsConfigurationSource corsConfigurationSource;
+    private final SessionService sessions;
+    private final CurrentSessionAuthorization currentAuthorization;
+    private final SessionApplications applications;
 
     @Bean
     public AuthenticationManager authenticationManager(AuthenticationConfiguration cfg) throws Exception {
@@ -44,6 +52,8 @@ public class BuyerSecurityConfig {
         String[] ignored = ignoredUrlsProperties.getUrls().toArray(new String[0]);
         http.securityMatcher("/buyer/**")
             .authorizeHttpRequests(a -> a
+                .requestMatchers(HttpMethod.POST, SessionRoutes.refresh(SessionDomain.RESIDENT)).permitAll()
+                .requestMatchers(SessionRoutes::requiresAuthentication).authenticated()
                 .requestMatchers(ignored).permitAll()
                 .anyRequest().authenticated())
             .headers(h -> h.frameOptions(f -> f.disable()))
@@ -58,7 +68,8 @@ public class BuyerSecurityConfig {
                         cn.lili.common.utils.ResponseUtil.resultMap(false, 403, "未登录或token失效"))))
             .formLogin(f -> f.disable())
             .httpBasic(b -> b.disable())
-            .addFilter(new BuyerAuthenticationFilter(authManager, cache, ignoredUrlsProperties, secretKeyUtil));
+            .addFilterBefore(new SessionHttpFilter(sessions, currentAuthorization, applications, SessionDomain.RESIDENT), BasicAuthenticationFilter.class)
+            .addFilter(new BuyerAuthenticationFilter(authManager, cache, ignoredUrlsProperties, secretKeyUtil, currentAuthorization));
         return http.build();
     }
 

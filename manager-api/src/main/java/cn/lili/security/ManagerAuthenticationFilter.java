@@ -9,6 +9,10 @@ import cn.lili.common.security.enums.PermissionEnum;
 import cn.lili.common.security.enums.SecurityEnum;
 import cn.lili.common.security.enums.UserEnums;
 import cn.lili.common.security.token.SecretKeyUtil;
+import cn.lili.common.security.session.http.CurrentSessionAuthorization;
+import cn.lili.common.security.session.http.SessionHttpFilter;
+import cn.lili.common.security.session.http.SessionProtocol;
+import cn.lili.common.security.session.http.SessionRoutes;
 import cn.lili.common.utils.ResponseUtil;
 import cn.lili.modules.permission.service.MenuService;
 import cn.lili.modules.system.token.ManagerTokenGenerate;
@@ -53,6 +57,7 @@ public class ManagerAuthenticationFilter extends BasicAuthenticationFilter {
     private final ManagerTokenGenerate managerTokenGenerate;
 
     private final IgnoredUrlsProperties ignoredUrlsProperties;
+    private final CurrentSessionAuthorization currentAuthorization;
 
     public ManagerAuthenticationFilter(AuthenticationManager authenticationManager,
                                        MenuService menuService,
@@ -60,12 +65,20 @@ public class ManagerAuthenticationFilter extends BasicAuthenticationFilter {
                                        Cache cache,
                                        IgnoredUrlsProperties ignoredUrlsProperties,
                                        SecretKeyUtil secretKeyUtil) {
+        this(authenticationManager, menuService, managerTokenGenerate, cache, ignoredUrlsProperties, secretKeyUtil, null);
+    }
+
+    public ManagerAuthenticationFilter(AuthenticationManager authenticationManager, MenuService menuService,
+                                       ManagerTokenGenerate managerTokenGenerate, Cache cache,
+                                       IgnoredUrlsProperties ignoredUrlsProperties, SecretKeyUtil secretKeyUtil,
+                                       CurrentSessionAuthorization currentAuthorization) {
         super(authenticationManager);
         this.cache = cache;
         this.secretKeyUtil = java.util.Objects.requireNonNull(secretKeyUtil, "JWT_KEY_COMPONENT_REQUIRED");
         this.menuService = menuService;
         this.managerTokenGenerate = managerTokenGenerate;
         this.ignoredUrlsProperties = ignoredUrlsProperties;
+        this.currentAuthorization = currentAuthorization;
     }
 
     @Override
@@ -73,10 +86,13 @@ public class ManagerAuthenticationFilter extends BasicAuthenticationFilter {
                                     HttpServletResponse response,
                                     FilterChain chain) throws IOException, ServletException {
 
-        // 忽略无需鉴权的路径，直接放行
+        if (SessionHttpFilter.verifiedRequest()) {
+            chain.doFilter(request, response);
+            return;
+        }
         String requestUri = request.getRequestURI();
         for (String url : ignoredUrlsProperties.getUrls()) {
-            if (PatternMatchUtils.simpleMatch(url, requestUri)) {
+            if (!SessionRoutes.requiresAuthentication(request) && PatternMatchUtils.simpleMatch(url, requestUri)) {
                 chain.doFilter(request, response);
                 return;
             }
@@ -95,7 +111,9 @@ public class ManagerAuthenticationFilter extends BasicAuthenticationFilter {
             try {
                 customAuthentication(request, response, authentication);
                 SecurityContextHolder.getContext().setAuthentication(authentication);
-            } catch (NoPermissionException e) {
+            } catch (NoPermissionException | RuntimeException e) {
+                SecurityContextHolder.clearContext();
+                if (!response.isCommitted()) ResponseUtil.output(response, 403, ResponseUtil.resultMap(false, 403, "权限不足"));
                 return;
             }
             chain.doFilter(request, response);
@@ -118,8 +136,13 @@ public class ManagerAuthenticationFilter extends BasicAuthenticationFilter {
         AuthUser authUser = (AuthUser) authentication.getDetails();
         String requestUrl = request.getRequestURI();
 
+        if (currentAuthorization != null) {
+            currentAuthorization.checkRoute(authUser, request.getMethod(), requestUrl, false);
+            return;
+        }
+
         //如果不是超级管理员， 则鉴权
-        if (Boolean.FALSE.equals(authUser.getIsSuper())) {
+        if (!Boolean.TRUE.equals(authUser.getIsSuper())) {
             String permissionCacheKey = CachePrefix.PERMISSION_LIST.getPrefix(UserEnums.MANAGER) + authUser.getId();
             //获取缓存中的权限
             Map<String, List<String>> permission =
@@ -173,12 +196,15 @@ public class ManagerAuthenticationFilter extends BasicAuthenticationFilter {
         try {
             Claims claims =
                     secretKeyUtil.parseClaims(jwt);
+            if (SessionProtocol.isStage0(claims)) return null;
             //获取存储在claims中的用户信息
             String json = claims.get(SecurityEnum.USER_CONTEXT.getValue()).toString();
             AuthUser authUser = new Gson().fromJson(json, AuthUser.class);
+            if (authUser == null || authUser.getRole() != UserEnums.MANAGER) return null;
 
             //校验redis中是否有权限
             if (cache.hasKey(CachePrefix.ACCESS_TOKEN.getPrefix(UserEnums.MANAGER, authUser.getId()) + jwt)) {
+                if (currentAuthorization != null) authUser = currentAuthorization.legacy(authUser);
                 List<GrantedAuthority> auths = new ArrayList<>();
                 auths.add(new SimpleGrantedAuthority("ROLE_" + authUser.getRole().name()));
                 UsernamePasswordAuthenticationToken authentication = new UsernamePasswordAuthenticationToken(authUser.getUsername(), null, auths);

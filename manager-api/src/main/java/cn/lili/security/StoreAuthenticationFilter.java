@@ -9,6 +9,9 @@ import cn.lili.common.security.enums.PermissionEnum;
 import cn.lili.common.security.enums.SecurityEnum;
 import cn.lili.common.security.enums.UserEnums;
 import cn.lili.common.security.token.SecretKeyUtil;
+import cn.lili.common.security.session.http.CurrentSessionAuthorization;
+import cn.lili.common.security.session.http.SessionHttpFilter;
+import cn.lili.common.security.session.http.SessionProtocol;
 import cn.lili.common.utils.ResponseUtil;
 import cn.lili.modules.member.entity.dos.Clerk;
 import cn.lili.modules.member.service.ClerkService;
@@ -53,6 +56,7 @@ public class StoreAuthenticationFilter extends BasicAuthenticationFilter {
     private final StoreMenuRoleService storeMenuRoleService;
 
     private final ClerkService clerkService;
+    private final CurrentSessionAuthorization currentAuthorization;
 
     public StoreAuthenticationFilter(AuthenticationManager authenticationManager,
                                      StoreTokenGenerate storeTokenGenerate,
@@ -60,18 +64,29 @@ public class StoreAuthenticationFilter extends BasicAuthenticationFilter {
                                      ClerkService clerkService,
                                      Cache cache,
                                      SecretKeyUtil secretKeyUtil) {
+        this(authenticationManager, storeTokenGenerate, storeMenuRoleService, clerkService, cache, secretKeyUtil, null);
+    }
+
+    public StoreAuthenticationFilter(AuthenticationManager authenticationManager, StoreTokenGenerate storeTokenGenerate,
+                                     StoreMenuRoleService storeMenuRoleService, ClerkService clerkService, Cache cache,
+                                     SecretKeyUtil secretKeyUtil, CurrentSessionAuthorization currentAuthorization) {
         super(authenticationManager);
         this.storeTokenGenerate = storeTokenGenerate;
         this.storeMenuRoleService = storeMenuRoleService;
         this.clerkService = clerkService;
         this.cache = cache;
         this.secretKeyUtil = java.util.Objects.requireNonNull(secretKeyUtil, "JWT_KEY_COMPONENT_REQUIRED");
+        this.currentAuthorization = currentAuthorization;
     }
 
     @SneakyThrows
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain) throws IOException,
             ServletException {
+        if (SessionHttpFilter.verifiedRequest()) {
+            chain.doFilter(request, response);
+            return;
+        }
         //从header中获取jwt
         String jwt = request.getHeader(SecurityEnum.HEADER_TOKEN.getValue());
         //如果没有token 则return
@@ -83,9 +98,16 @@ public class StoreAuthenticationFilter extends BasicAuthenticationFilter {
         UsernamePasswordAuthenticationToken authentication = getAuthentication(jwt, response);
         //自定义权限过滤
         if (authentication != null) {
-            customAuthentication(request, response, authentication);
+            try {
+                customAuthentication(request, response, authentication);
+            } catch (RuntimeException e) {
+                SecurityContextHolder.clearContext();
+                outputInvalidToken(response);
+                return;
+            }
             SecurityContextHolder.getContext().setAuthentication(authentication);
         } else if (StrUtil.isNotBlank(jwt)) {
+            outputInvalidToken(response);
             return;
         }
         chain.doFilter(request, response);
@@ -104,12 +126,15 @@ public class StoreAuthenticationFilter extends BasicAuthenticationFilter {
         try {
             Claims claims =
                     secretKeyUtil.parseClaims(jwt);
+            if (SessionProtocol.isStage0(claims)) return null;
             //获取存储在claims中的用户信息
             String json = claims.get(SecurityEnum.USER_CONTEXT.getValue()).toString();
             AuthUser authUser = new Gson().fromJson(json, AuthUser.class);
+            if (authUser == null || authUser.getRole() != UserEnums.STORE) return null;
     
             //校验redis中是否有权限
             if (cache.hasKey(CachePrefix.ACCESS_TOKEN.getPrefix(UserEnums.STORE, authUser.getId()) + jwt)) {
+                if (currentAuthorization != null) authUser = currentAuthorization.legacy(authUser);
                 //用户角色
                 List<GrantedAuthority> auths = new ArrayList<>();
                 auths.add(new SimpleGrantedAuthority("ROLE_" + authUser.getRole().name()));
@@ -147,9 +172,14 @@ public class StoreAuthenticationFilter extends BasicAuthenticationFilter {
         AuthUser authUser = (AuthUser) authentication.getDetails();
         String requestUrl = request.getRequestURI();
 
+        if (currentAuthorization != null) {
+            currentAuthorization.checkRoute(authUser, request.getMethod(), requestUrl, false);
+            return;
+        }
+
 
         //如果不是超级管理员， 则鉴权
-        if (Boolean.FALSE.equals(authUser.getIsSuper())) {
+        if (!Boolean.TRUE.equals(authUser.getIsSuper())) {
 
             String permissionCacheKey = CachePrefix.PERMISSION_LIST.getPrefix(UserEnums.STORE) + authUser.getId();
             //获取缓存中的权限

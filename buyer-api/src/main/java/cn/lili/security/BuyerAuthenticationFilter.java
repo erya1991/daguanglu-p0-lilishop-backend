@@ -8,6 +8,10 @@ import cn.lili.common.security.AuthUser;
 import cn.lili.common.security.enums.SecurityEnum;
 import cn.lili.common.security.enums.UserEnums;
 import cn.lili.common.security.token.SecretKeyUtil;
+import cn.lili.common.security.session.http.CurrentSessionAuthorization;
+import cn.lili.common.security.session.http.SessionHttpFilter;
+import cn.lili.common.security.session.http.SessionProtocol;
+import cn.lili.common.security.session.http.SessionRoutes;
 import cn.lili.common.utils.ResponseUtil;
 import com.google.gson.Gson;
 import io.jsonwebtoken.Claims;
@@ -46,6 +50,7 @@ public class BuyerAuthenticationFilter extends BasicAuthenticationFilter {
     private final SecretKeyUtil secretKeyUtil;
 
     private final IgnoredUrlsProperties ignoredUrlsProperties;
+    private final CurrentSessionAuthorization currentAuthorization;
 
     /**
      * 自定义构造器
@@ -58,20 +63,31 @@ public class BuyerAuthenticationFilter extends BasicAuthenticationFilter {
                                      Cache cache,
                                      IgnoredUrlsProperties ignoredUrlsProperties,
                                      SecretKeyUtil secretKeyUtil) {
+        this(authenticationManager, cache, ignoredUrlsProperties, secretKeyUtil, null);
+    }
+
+    public BuyerAuthenticationFilter(AuthenticationManager authenticationManager, Cache cache,
+                                     IgnoredUrlsProperties ignoredUrlsProperties, SecretKeyUtil secretKeyUtil,
+                                     CurrentSessionAuthorization currentAuthorization) {
         super(authenticationManager);
         this.cache = cache;
         this.secretKeyUtil = java.util.Objects.requireNonNull(secretKeyUtil, "JWT_KEY_COMPONENT_REQUIRED");
         this.ignoredUrlsProperties = ignoredUrlsProperties;
+        this.currentAuthorization = currentAuthorization;
     }
 
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain)
             throws IOException, ServletException {
 
-        // 忽略无需鉴权的路径，直接放行（与管理端保持一致）
+        if (SessionHttpFilter.verifiedRequest()) {
+            chain.doFilter(request, response);
+            return;
+        }
+        // Narrow identity routes are protected even if an external ignored.urls is too broad.
         String requestUri = request.getRequestURI();
         for (String url : ignoredUrlsProperties.getUrls()) {
-            if (PatternMatchUtils.simpleMatch(url, requestUri)) {
+            if (!SessionRoutes.requiresAuthentication(request) && PatternMatchUtils.simpleMatch(url, requestUri)) {
                 chain.doFilter(request, response);
                 return;
             }
@@ -96,7 +112,8 @@ public class BuyerAuthenticationFilter extends BasicAuthenticationFilter {
         } catch (Exception e) {
             log.error("Buyer authentication failed: {}", e.getClass().getSimpleName());
             if (!response.isCommitted()) {
-                chain.doFilter(request, response);
+                SecurityContextHolder.clearContext();
+                ResponseUtil.output(response, 403, ResponseUtil.resultMap(false, 403, "登录已失效，请重新登录"));
             }
         }
     }
@@ -113,12 +130,15 @@ public class BuyerAuthenticationFilter extends BasicAuthenticationFilter {
         try {
             Claims claims =
                     secretKeyUtil.parseClaims(jwt);
+            if (SessionProtocol.isStage0(claims)) return null;
             // 获取存储在claims中的用户信息
             String json = claims.get(SecurityEnum.USER_CONTEXT.getValue()).toString();
             AuthUser authUser = new Gson().fromJson(json, AuthUser.class);
+            if (authUser == null || authUser.getRole() != UserEnums.MEMBER) return null;
 
             //校验redis中是否有权限
             if (cache.hasKey(CachePrefix.ACCESS_TOKEN.getPrefix(UserEnums.MEMBER, authUser.getId()) + jwt)) {
+                if (currentAuthorization != null) authUser = currentAuthorization.legacy(authUser);
                 //构造返回信息
                 List<GrantedAuthority> auths = new ArrayList<>();
                 auths.add(new SimpleGrantedAuthority("ROLE_" + authUser.getRole().name()));

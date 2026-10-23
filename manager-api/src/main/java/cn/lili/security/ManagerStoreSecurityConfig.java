@@ -4,6 +4,11 @@ import cn.lili.cache.Cache;
 import cn.lili.common.properties.IgnoredUrlsProperties;
 import cn.lili.common.security.CustomAccessDeniedHandler;
 import cn.lili.common.security.token.SecretKeyUtil;
+import cn.lili.common.security.session.SessionDomain;
+import cn.lili.common.security.session.SessionService;
+import cn.lili.common.security.session.http.*;
+import org.springframework.http.HttpMethod;
+import org.springframework.security.web.authentication.www.BasicAuthenticationFilter;
 import cn.lili.modules.member.service.ClerkService;
 import cn.lili.modules.member.service.StoreMenuRoleService;
 import cn.lili.modules.member.token.StoreTokenGenerate;
@@ -41,6 +46,21 @@ public class ManagerStoreSecurityConfig {
     private final ClerkService clerkService;
     private final MenuService menuService;
     private final ManagerTokenGenerate managerTokenGenerate;
+    private final SessionService sessions;
+    private final CurrentSessionAuthorization currentAuthorization;
+    private final SessionApplications applications;
+
+    @Bean
+    @Order(15)
+    public SecurityFilterChain applicantSecurityFilterChain(HttpSecurity http) throws Exception {
+        http.securityMatcher(SessionRoutes.APPLICANT + "/**")
+            .authorizeHttpRequests(a -> a.anyRequest().authenticated())
+            .csrf(c -> c.disable()).cors(c -> c.configurationSource(corsConfigurationSource))
+            .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+            .formLogin(f -> f.disable()).httpBasic(b -> b.disable())
+            .addFilterBefore(new SessionHttpFilter(sessions, currentAuthorization, applications, SessionDomain.APPLICANT), BasicAuthenticationFilter.class);
+        return http.build();
+    }
 
     @Bean
     public AuthenticationManager authenticationManager(AuthenticationConfiguration cfg) throws Exception {
@@ -54,6 +74,8 @@ public class ManagerStoreSecurityConfig {
         String[] ignored = ignoredUrlsProperties.getUrls().toArray(new String[0]);
         http.securityMatcher("/store/**")
             .authorizeHttpRequests(a -> a
+                .requestMatchers(HttpMethod.POST, SessionRoutes.refresh(SessionDomain.STORE)).permitAll()
+                .requestMatchers(SessionRoutes::requiresAuthentication).authenticated()
                 .requestMatchers(ignored).permitAll()
                 .anyRequest().authenticated())
             .headers(h -> h.frameOptions(f -> f.disable()))
@@ -68,8 +90,9 @@ public class ManagerStoreSecurityConfig {
                         cn.lili.common.utils.ResponseUtil.resultMap(false, 403, "未登录或token失效"))))
             .formLogin(f -> f.disable())
             .httpBasic(b -> b.disable())
+            .addFilterBefore(new SessionHttpFilter(sessions, currentAuthorization, applications, SessionDomain.STORE), BasicAuthenticationFilter.class)
             .addFilter(new StoreAuthenticationFilter(authManager, storeTokenGenerate,
-                    storeMenuRoleService, clerkService, cache, secretKeyUtil));
+                    storeMenuRoleService, clerkService, cache, secretKeyUtil, currentAuthorization));
         return http.build();
     }
 
@@ -80,6 +103,8 @@ public class ManagerStoreSecurityConfig {
         http.securityMatcher("/manager/**")
             .headers(h -> h.frameOptions(f -> f.disable()))
             .authorizeHttpRequests(a -> {
+                a.requestMatchers(HttpMethod.POST, SessionRoutes.refresh(SessionDomain.MANAGER)).permitAll();
+                a.requestMatchers(SessionRoutes::requiresAuthentication).authenticated();
                 for (String url : ignoredUrlsProperties.getUrls()) {
                     a.requestMatchers(url).permitAll();
                 }
@@ -96,8 +121,9 @@ public class ManagerStoreSecurityConfig {
                         cn.lili.common.utils.ResponseUtil.resultMap(false, 403, "未登录或token失效"))))
             .formLogin(f -> f.disable())
             .httpBasic(b -> b.disable())
+            .addFilterBefore(new SessionHttpFilter(sessions, currentAuthorization, applications, SessionDomain.MANAGER), BasicAuthenticationFilter.class)
             .addFilter(new ManagerAuthenticationFilter(authManager, menuService,
-                    managerTokenGenerate, cache, ignoredUrlsProperties, secretKeyUtil));
+                    managerTokenGenerate, cache, ignoredUrlsProperties, secretKeyUtil, currentAuthorization));
         return http.build();
     }
 

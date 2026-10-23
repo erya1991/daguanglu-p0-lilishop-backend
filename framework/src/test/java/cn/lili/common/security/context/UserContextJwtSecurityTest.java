@@ -17,6 +17,8 @@ import org.springframework.web.context.WebApplicationContext;
 import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.context.request.ServletRequestAttributes;
 import org.springframework.web.context.support.GenericWebApplicationContext;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.context.SecurityContextHolder;
 import java.security.SecureRandom;
 import java.util.*;
 import static org.junit.jupiter.api.Assertions.*;
@@ -26,6 +28,7 @@ class UserContextJwtSecurityTest {
     @AfterEach
     void clearRequest() {
         RequestContextHolder.resetRequestAttributes();
+        SecurityContextHolder.clearContext();
     }
     private static GenericWebApplicationContext context() {
         byte[] raw = new byte[32];
@@ -50,6 +53,7 @@ class UserContextJwtSecurityTest {
                 .signWith(keys.generalKey(), Jwts.SIG.HS256).compact();
     }
     private static void request(GenericWebApplicationContext c, String token) {
+        SecurityContextHolder.clearContext();
         var r = new MockHttpServletRequest(c.getServletContext());
         r.addHeader(SecurityEnum.HEADER_TOKEN.getValue(), token);
         RequestContextHolder.setRequestAttributes(new ServletRequestAttributes(r));
@@ -60,9 +64,13 @@ class UserContextJwtSecurityTest {
             String ta = token(a.getBean(SecretKeyUtil.class), UserEnums.MANAGER, 60000);
             String tb = token(b.getBean(SecretKeyUtil.class), UserEnums.STORE, 60000);
             request(a, ta);
+            assertNull(UserContext.getCurrentUser(), "A verified signature alone is not HTTP authorization");
+            authenticate(a, ta);
             assertEquals(UserEnums.MANAGER, UserContext.getCurrentUser().getRole());
             assertNull(UserContext.getAuthUser(tb));
             request(b, tb);
+            assertNull(UserContext.getCurrentUser());
+            authenticate(b, tb);
             assertEquals("synthetic-store", UserContext.getCurrentUser().getStoreId());
             assertNull(UserContext.getAuthUser(ta));
         }
@@ -73,10 +81,20 @@ class UserContextJwtSecurityTest {
             String t = token(c.getBean(SecretKeyUtil.class), UserEnums.MEMBER, 60000);
             assertNull(UserContext.getAuthUser(t));
             request(c, t);
-            assertNotNull(UserContext.getAuthUser(t));
+            assertNull(UserContext.getAuthUser(t));
             c.close();
             assertNull(UserContext.getAuthUser(t));
         }
+    }
+
+    private static void authenticate(GenericWebApplicationContext context, String token) {
+        var keys = context.getBean(SecretKeyUtil.class);
+        Cache<?> cache = mock(Cache.class, call -> call.getMethod().getName().equals("hasKey"));
+        var user = UserContext.getAuthUser(cache, token, keys);
+        assertNotNull(user);
+        var authentication = new UsernamePasswordAuthenticationToken(user.getUsername(), null, List.of());
+        authentication.setDetails(user);
+        SecurityContextHolder.getContext().setAuthentication(authentication);
     }
     @Test
     void explicitVerifierSupportsNonHttpCallersAndChecksServerSession() {

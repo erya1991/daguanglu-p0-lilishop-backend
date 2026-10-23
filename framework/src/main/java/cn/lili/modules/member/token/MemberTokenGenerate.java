@@ -73,7 +73,7 @@ public class MemberTokenGenerate extends AbstractTokenGenerate<Member> {
 
     @Override
     public Token refreshToken(String refreshToken) {
-        return tokenUtil.refreshToken(refreshToken);
+        return tokenUtil.refreshToken(refreshToken, UserEnums.MEMBER);
     }
 
 }

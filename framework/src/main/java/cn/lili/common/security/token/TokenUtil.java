@@ -8,6 +8,9 @@ import cn.lili.common.properties.JWTTokenProperties;
 import cn.lili.common.security.AuthUser;
 import cn.lili.common.security.enums.SecurityEnum;
 import cn.lili.common.security.enums.UserEnums;
+import cn.lili.common.security.session.http.SessionProtocol;
+import cn.lili.common.security.session.http.CurrentSessionAuthorization;
+import org.springframework.beans.factory.ObjectProvider;
 import com.google.gson.Gson;
 import io.jsonwebtoken.*;
 import io.jsonwebtoken.security.SignatureException;
@@ -32,6 +35,8 @@ public class TokenUtil {
     private Cache cache;
     @Autowired
     private SecretKeyUtil secretKeyUtil;
+    @Autowired
+    private ObjectProvider<CurrentSessionAuthorization> currentAuthorizations;
 
     /**
      * 构建token
@@ -64,6 +69,12 @@ public class TokenUtil {
      * @return token
      */
     public Token refreshToken(String oldRefreshToken) {
+        return refreshToken(oldRefreshToken, null);
+    }
+
+    public Token refreshToken(String oldRefreshToken, UserEnums expectedRole) {
+
+        if (SessionProtocol.isStage0(oldRefreshToken)) throw new ServiceException(ResultCode.USER_AUTH_EXPIRED);
 
         Claims claims;
         try {
@@ -75,8 +86,15 @@ public class TokenUtil {
         }
 
         //获取存储在claims中的用户信息
+        if (SessionProtocol.isStage0(claims) || claims.get(SecurityEnum.USER_CONTEXT.getValue()) == null) {
+            throw new ServiceException(ResultCode.USER_AUTH_EXPIRED);
+        }
         String json = claims.get(SecurityEnum.USER_CONTEXT.getValue()).toString();
         AuthUser authUser = new Gson().fromJson(json, AuthUser.class);
+        if (authUser == null || authUser.getRole() == null || authUser.getId() == null
+                || (expectedRole != null && authUser.getRole() != expectedRole)) {
+            throw new ServiceException(ResultCode.USER_AUTH_EXPIRED);
+        }
         UserEnums userEnums = authUser.getRole();
 
         String username = authUser.getUsername();
@@ -86,6 +104,18 @@ public class TokenUtil {
 
         //如果缓存中有刷新token &&
         if (cache.hasKey(CachePrefix.REFRESH_TOKEN.getPrefix(userEnums, authUser.getId()) + oldRefreshToken)) {
+            // Production always injects this provider. Direct legacy unit fixtures keep their old setup.
+            if (currentAuthorizations != null && (userEnums == UserEnums.MEMBER
+                    || userEnums == UserEnums.STORE || userEnums == UserEnums.MANAGER)) {
+                try {
+                    var current = currentAuthorizations.getIfUnique();
+                    if (current == null) throw new IllegalStateException();
+                    authUser = current.legacy(authUser);
+                    authUser.setLongTerm(longTerm);
+                } catch (RuntimeException rejected) {
+                    throw new ServiceException(ResultCode.USER_AUTH_EXPIRED);
+                }
+            }
             Token token = new Token();
             //访问token
             String accessToken = createToken(authUser, tokenProperties.getTokenExpireTime());
