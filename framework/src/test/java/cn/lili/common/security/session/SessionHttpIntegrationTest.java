@@ -10,6 +10,9 @@ import cn.lili.modules.member.entity.dos.*;
 import cn.lili.modules.member.entity.vo.StoreUserMenuVO;
 import cn.lili.modules.member.service.*;
 import cn.lili.modules.member.token.StoreTokenGenerate;
+import cn.lili.modules.member.mapper.MerchantGrantMapper;
+import cn.lili.modules.member.merchant.MerchantAuthorizationService;
+import cn.lili.modules.member.merchant.MerchantOwnershipProof;
 import cn.lili.modules.permission.entity.dos.AdminUser;
 import cn.lili.modules.permission.entity.vo.UserMenuVO;
 import cn.lili.modules.permission.service.*;
@@ -245,6 +248,7 @@ class SessionHttpIntegrationTest {
         final Store store = new Store();
         final AdminUser admin = new AdminUser();
         final State state = new State();
+        boolean applicantFixture;
         final CurrentSessionAuthorization authorization;
         final SessionService sessions;
 
@@ -259,7 +263,9 @@ class SessionHttpIntegrationTest {
             admin.setId(member.getId()); admin.setUsername("synthetic-manager"); admin.setDeleteFlag(false); admin.setStatus(true); admin.setIsSuper(false);
             when(members.getById("synthetic-actor")).thenReturn(member);
             when(admins.getById("synthetic-actor")).thenReturn(admin);
-            when(clerks.list(any(QueryWrapper.class))).thenReturn(List.of(clerk));
+            when(clerks.list(any(QueryWrapper.class))).thenAnswer(i -> applicantFixture ? List.of() : List.of(clerk));
+            when(stores.list(any(QueryWrapper.class))).thenAnswer(i -> !applicantFixture
+                    && member.getId().equals(store.getMemberId()) ? List.of(store) : List.of());
             when(stores.getById("synthetic-store")).thenReturn(store);
             when(menus.findAllMenu("synthetic-actor")).thenReturn(List.of());
             var grant = new StoreUserMenuVO(); grant.setPermission("/store/member/user*"); grant.setIsSuper(false);
@@ -269,12 +275,25 @@ class SessionHttpIntegrationTest {
             });
             authorization = new CurrentSessionAuthorization(apps, verifiers, members, clerks, stores, admins,
                     menus, storeMenus, new ManagerTokenGenerate(), new StoreTokenGenerate());
+            MerchantGrantMapper merchantGrants=mock(MerchantGrantMapper.class);
+            when(merchantGrants.current(anyString(),anyString(),nullable(String.class))).thenAnswer(i ->
+                    storeMenus.getUserRoleMenu(clerk.getId()).stream().map(menu -> {
+                        var current=new MerchantGrantMapper.Grant(); current.setRoleId("synthetic-role");
+                        current.setStoreId(store.getId()); current.setMenuId("synthetic-menu");
+                        current.setPermission(menu.getPermission());current.setWriteGrant(menu.getSuper());return current;
+                    }).toList());
+            ObjectProvider<MerchantOwnershipProof> ownership=mock(ObjectProvider.class);
+            when(ownership.getIfUnique()).thenReturn(identity -> new MerchantOwnershipProof.Verified(identity.application(),
+                    identity.bindingId(),identity.bindingVersion(),identity.subject(),"synthetic-approved-proof",
+                    MerchantOwnershipProof.Kind.APPROVED_EVIDENCE));
+            authorization.setMerchantAuthorization(new MerchantAuthorizationService(apps,members,clerks,stores,merchantGrants,ownership));
             byte[] key = new byte[32]; new SecureRandom().nextBytes(key);
             var properties = new JWTTokenProperties(); properties.setSecretKey(Base64.getEncoder().encodeToString(key));
             sessions = new SessionService(state, new SecretKeyUtil(properties), authorization, Clock.systemUTC());
         }
 
         SessionTokens issue(SessionDomain domain) {
+            if(domain==SessionDomain.APPLICANT || domain==SessionDomain.STORE) applicantFixture=domain==SessionDomain.APPLICANT;
             return sessions.create(new SessionIdentity("synthetic-actor", domain, apps.application(domain),
                     domain == SessionDomain.MANAGER ? null : "synthetic-mapping", domain == SessionDomain.MANAGER ? null : 1L));
         }

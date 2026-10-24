@@ -44,7 +44,8 @@ public final class SessionHttpFilter extends OncePerRequestFilter {
         String method = request.getMethod();
         String token = request.getHeader(SecurityEnum.HEADER_TOKEN.getValue());
         try {
-            if (domain == SessionDomain.RESIDENT && method.equals("POST") && path.equals(SessionRoutes.RESIDENT_LOGIN)) {
+            if (method.equals("POST") && ((domain == SessionDomain.RESIDENT && path.equals(SessionRoutes.RESIDENT_LOGIN))
+                    || (domain == SessionDomain.STORE && path.equals(SessionRoutes.MERCHANT_LOGIN)))) {
                 SecurityContextHolder.clearContext(); // Fresh Code login is independent of an old Access header.
                 chain.doFilter(request, response);
                 return;
@@ -70,6 +71,7 @@ public final class SessionHttpFilter extends OncePerRequestFilter {
             }
             if (!SessionProtocol.isStage0(token)) {
                 require(!SessionRoutes.residentWritePath(path)); // No anonymous/legacy JWT downgrade into R02 writes.
+                require(!SessionRoutes.merchantIdentityPath(path)); // P05 identity reads require a current mapped Session.
                 require(domain != SessionDomain.APPLICANT); // No legacy Applicant fallback.
                 chain.doFilter(request, response);
                 return;
@@ -78,6 +80,10 @@ public final class SessionHttpFilter extends OncePerRequestFilter {
             // These endpoints never select a different identity from request fields.
             for (String selector : List.of("memberId", "userId", "applicantId", "storeId", "clerkId", "role", "isSuper", "appId")) {
                 require(request.getParameter(selector) == null);
+                // P05 rejects merchant selectors here; retain the existing Resident/Manager error contracts.
+                if (domain == SessionDomain.APPLICANT || domain == SessionDomain.STORE) {
+                    require(request.getHeader(selector) == null);
+                }
             }
             var verified = sessions.verifyAccess(token, domain, applications.application(domain));
             AuthUser user = authorization.current(verified.identity());

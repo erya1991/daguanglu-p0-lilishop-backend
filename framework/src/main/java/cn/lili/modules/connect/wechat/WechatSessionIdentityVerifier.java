@@ -10,9 +10,15 @@ import org.springframework.stereotype.Component;
 public final class WechatSessionIdentityVerifier implements SessionIdentityVerifier {
     private final WechatIdentityService identities;
     private final SessionApplications applications;
+    private MerchantWechatProperties merchant;
     private cn.lili.modules.connect.mapper.MemberIdentityLinkMapper links;
     private cn.lili.modules.member.profile.ResidentProfileProperties profile;
     @org.springframework.beans.factory.annotation.Autowired
+    public WechatSessionIdentityVerifier(WechatIdentityService identities,SessionApplications applications,
+            cn.lili.modules.connect.mapper.MemberIdentityLinkMapper links,cn.lili.modules.member.profile.ResidentProfileProperties profile,
+            MerchantWechatProperties merchant) {
+        this(identities,applications,links,profile); this.merchant=merchant;
+    }
     public WechatSessionIdentityVerifier(WechatIdentityService identities,SessionApplications applications,
             cn.lili.modules.connect.mapper.MemberIdentityLinkMapper links,cn.lili.modules.member.profile.ResidentProfileProperties profile) {
         this(identities,applications);this.links=links;this.profile=profile;
@@ -21,11 +27,14 @@ public final class WechatSessionIdentityVerifier implements SessionIdentityVerif
         this.identities = identities; this.applications = applications;
     }
     @Override public void check(SessionIdentity identity) {
-        if (identity == null || identity.domain() != SessionDomain.RESIDENT) {
+        if (identity == null || (identity.domain() != SessionDomain.RESIDENT
+                && identity.domain() != SessionDomain.APPLICANT && identity.domain() != SessionDomain.STORE)
+                || (identity.domain() != SessionDomain.RESIDENT && merchant == null)) {
             throw new SessionException(SessionException.Code.AUTHORIZATION_REQUIRED);
         }
         try {
-            if (!applications.application(SessionDomain.RESIDENT).equals(identity.application())) {
+            if (identity.domain() != SessionDomain.RESIDENT) merchant.requireSchema();
+            if (!applications.application(identity.domain()).equals(identity.application())) {
                 throw new SessionException(SessionException.Code.DENIED);
             }
             identities.verify(identity);

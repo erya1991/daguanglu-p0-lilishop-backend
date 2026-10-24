@@ -17,20 +17,35 @@ import static cn.lili.modules.connect.wechat.ResidentLoginException.Code.*;
 public final class OfficialWechatCodeGateway implements WechatCodeGateway {
     private final SessionApplications applications;
     private final ResidentWechatProperties properties;
+    private final MerchantWechatProperties merchant;
     private final Exchange exchange;
 
     @Autowired
+    public OfficialWechatCodeGateway(SessionApplications applications, ResidentWechatProperties properties,
+                                     MerchantWechatProperties merchant) {
+        this(applications, properties, merchant, OfficialWechatCodeGateway::get);
+    }
     public OfficialWechatCodeGateway(SessionApplications applications, ResidentWechatProperties properties) {
-        this(applications, properties, OfficialWechatCodeGateway::get);
+        this(applications, properties, new MerchantWechatProperties(), OfficialWechatCodeGateway::get);
     }
     // Package-only transport seam; used by offline tests, never selected by a production profile.
     OfficialWechatCodeGateway(SessionApplications applications, ResidentWechatProperties properties, Exchange exchange) {
-        this.applications = applications; this.properties = properties; this.exchange = exchange;
+        this(applications, properties, new MerchantWechatProperties(), exchange);
+    }
+    OfficialWechatCodeGateway(SessionApplications applications, ResidentWechatProperties properties,
+                              MerchantWechatProperties merchant, Exchange exchange) {
+        this.applications = applications; this.properties = properties; this.merchant = merchant; this.exchange = exchange;
     }
     @Override public Identity authenticate(String loginCode) {
+        return authenticate(loginCode, SessionDomain.RESIDENT);
+    }
+    @Override public Identity authenticate(String loginCode, SessionDomain domain) {
         ResidentWechatLoginService.requireCode(loginCode);
-        String secret = properties.requireSecret();
-        String app = applications.application(SessionDomain.RESIDENT);
+        if (domain != SessionDomain.RESIDENT && domain != SessionDomain.APPLICANT) {
+            throw new ResidentLoginException(INVALID_REQUEST);
+        }
+        String secret = domain == SessionDomain.RESIDENT ? properties.requireSecret() : merchant.requireSecret();
+        String app = applications.application(domain);
         if (!app.matches("wx[0-9a-fA-F]{16}")) throw new ResidentLoginException(CONFIG_REQUIRED);
         try {
             String url = "https://api.weixin.qq.com/sns/jscode2session?appid=" + encode(app)

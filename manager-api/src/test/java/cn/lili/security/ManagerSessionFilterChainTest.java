@@ -15,6 +15,7 @@ import cn.lili.modules.member.entity.dos.*;
 import cn.lili.modules.member.entity.vo.StoreUserMenuVO;
 import cn.lili.modules.member.service.*;
 import cn.lili.modules.member.token.StoreTokenGenerate;
+import cn.lili.modules.member.merchant.MerchantAuthorizationService;
 import cn.lili.modules.permission.entity.dos.AdminUser;
 import cn.lili.modules.permission.entity.vo.UserMenuVO;
 import cn.lili.modules.permission.service.*;
@@ -85,10 +86,11 @@ class ManagerSessionFilterChainTest {
     @ParameterizedTest @EnumSource(value = UserEnums.class, names = {"STORE", "MANAGER"})
     void validLegacySessionSurvivesAndCurrentRevocationWins(UserEnums role) throws Exception {
         var target = role == UserEnums.STORE ? SessionDomain.STORE : SessionDomain.MANAGER;
+        String endpoint = role == UserEnums.STORE ? "/store/legacy/read" : path(target);
         String credential = beans.legacy(role, true);
-        assertEquals(200, mvc.perform(get(path(target)).header("accessToken", credential)).andReturn().getResponse().getStatus());
+        assertEquals(200, mvc.perform(get(endpoint).header("accessToken", credential)).andReturn().getResponse().getStatus());
         if (role == UserEnums.STORE) beans.clerk.setStatus(false); else beans.admin.setStatus(false);
-        assertEquals(403, mvc.perform(get(path(target)).header("accessToken", credential)).andReturn().getResponse().getStatus());
+        assertEquals(403, mvc.perform(get(endpoint).header("accessToken", credential)).andReturn().getResponse().getStatus());
         assertEquals(1, beans.calls.get());
         verifyNoInteractions(beans.sessions);
     }
@@ -230,12 +232,27 @@ class ManagerSessionFilterChainTest {
             when(clerks.list(any(QueryWrapper.class))).thenReturn(List.of(clerk));
             when(stores.getById("synthetic-store")).thenReturn(store);
             var storeGrant = new StoreUserMenuVO(); storeGrant.setPermission("/store/member/user*"); storeGrant.setIsSuper(false);
-            when(storeMenus.getUserRoleMenu("synthetic-clerk")).thenReturn(List.of(storeGrant));
+            var legacyRead = new StoreUserMenuVO(); legacyRead.setPermission("/store/legacy/read"); legacyRead.setIsSuper(false);
+            when(storeMenus.getUserRoleMenu("synthetic-clerk")).thenReturn(List.of(storeGrant, legacyRead));
             var managerGrant = new UserMenuVO(); managerGrant.setPermission("/manager/passport/user/info"); managerGrant.setIsSuper(false);
             when(menus.findAllMenu("synthetic-actor")).thenReturn(List.of(managerGrant));
             ObjectProvider<SessionIdentityVerifier> verifiers = mock(ObjectProvider.class);
             when(verifiers.getIfUnique()).thenReturn(identity -> { });
-            return new CurrentSessionAuthorization(apps, verifiers, members, clerks, stores, admins, menus, storeMenus, mt, st);
+            var current = new CurrentSessionAuthorization(apps, verifiers, members, clerks, stores, admins, menus, storeMenus, mt, st);
+            var merchant = mock(MerchantAuthorizationService.class);
+            when(merchant.resolve(any())).thenAnswer(i -> {
+                SessionIdentity identity = i.getArgument(0);
+                if (identity.domain() == SessionDomain.APPLICANT) {
+                    return new MerchantAuthorizationService.Context(SessionDomain.APPLICANT, member.getId(), null,
+                            null, null, MerchantAuthorizationService.Role.APPLICANT, null);
+                }
+                var user = AuthUser.builder().id(member.getId()).username(member.getUsername()).role(UserEnums.STORE)
+                        .storeId(store.getId()).clerkId(clerk.getId()).isSuper(false).build();
+                return new MerchantAuthorizationService.Context(SessionDomain.STORE, member.getId(), clerk.getId(),
+                        store.getId(), store.getStoreName(), MerchantAuthorizationService.Role.OWNER, user);
+            });
+            current.setMerchantAuthorization(merchant);
+            return current;
         }
         @Bean CorsConfigurationSource corsConfigurationSource() { return new UrlBasedCorsConfigurationSource(); }
         @Bean AuthenticationProvider provider() { return new AuthenticationProvider() {
@@ -261,7 +278,7 @@ class ManagerSessionFilterChainTest {
     @RestController static class Endpoints {
         final AtomicInteger calls;
         Endpoints(AtomicInteger calls) { this.calls = calls; }
-        @GetMapping({"/store/member/user/info", "/manager/passport/user/info"}) String own() {
+        @GetMapping({"/store/member/user/info", "/manager/passport/user/info", "/store/legacy/read"}) String own() {
             assertNotNull(UserContext.getCurrentUser()); calls.incrementAndGet(); return "OWN";
         }
         @PostMapping({"/store/goods/goods", "/manager/store/store/audit", "/store/passport/login/logout", "/manager/passport/user/logout"})

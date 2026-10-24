@@ -12,6 +12,7 @@ import cn.lili.common.security.token.SecretKeyUtil;
 import cn.lili.common.security.session.http.CurrentSessionAuthorization;
 import cn.lili.common.security.session.http.SessionHttpFilter;
 import cn.lili.common.security.session.http.SessionProtocol;
+import cn.lili.common.security.session.http.SessionRoutes;
 import cn.lili.common.utils.ResponseUtil;
 import cn.lili.modules.member.entity.dos.Clerk;
 import cn.lili.modules.member.service.ClerkService;
@@ -83,7 +84,8 @@ public class StoreAuthenticationFilter extends BasicAuthenticationFilter {
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain) throws IOException,
             ServletException {
-        if (SessionHttpFilter.verifiedRequest()) {
+        if (SessionHttpFilter.verifiedRequest() || (request.getMethod().equals("POST")
+                && request.getRequestURI().equals(SessionRoutes.MERCHANT_LOGIN))) {
             chain.doFilter(request, response);
             return;
         }

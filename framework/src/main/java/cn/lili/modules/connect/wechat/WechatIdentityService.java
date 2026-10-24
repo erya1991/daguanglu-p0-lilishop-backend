@@ -25,23 +25,37 @@ public class WechatIdentityService {
     private final WechatIdentityMapper mappings;
     private final MemberMapper members;
     private final ResidentWechatProperties properties;
+    private final MerchantWechatProperties merchant;
     private final TransactionTemplate transaction;
 
+    @org.springframework.beans.factory.annotation.Autowired
     public WechatIdentityService(WechatIdentityMapper mappings, MemberMapper members,
-                                 ResidentWechatProperties properties, PlatformTransactionManager manager) {
-        this.mappings = mappings; this.members = members; this.properties = properties;
+                                 ResidentWechatProperties properties, MerchantWechatProperties merchant,
+                                 PlatformTransactionManager manager) {
+        this.mappings = mappings; this.members = members; this.properties = properties; this.merchant = merchant;
         transaction = new TransactionTemplate(manager);
         transaction.setTimeout(10);
     }
+    public WechatIdentityService(WechatIdentityMapper mappings, MemberMapper members,
+                                 ResidentWechatProperties properties, PlatformTransactionManager manager) {
+        this(mappings, members, properties, new MerchantWechatProperties(), manager);
+    }
 
     public SessionIdentity resolve(WechatCodeGateway.Identity identity) {
-        properties.requireSchema();
+        return resolve(identity, SessionDomain.RESIDENT);
+    }
+    /** Login establishes a personal mapping first; only the merchant grant resolver may select STORE. */
+    public SessionIdentity resolve(WechatCodeGateway.Identity identity, SessionDomain domain) {
+        if (identity == null || (domain != SessionDomain.RESIDENT && domain != SessionDomain.APPLICANT)) {
+            throw new ResidentLoginException(IDENTITY_CONFLICT);
+        }
+        requireSchema(domain);
         // Never return a Session identity from an uncommitted outer transaction.
         if (TransactionSynchronizationManager.isActualTransactionActive()) throw new ResidentLoginException(LOGIN_UNAVAILABLE);
         try {
             return committed(() -> {
                 WechatIdentity found = find(identity.appId(), identity.openId());
-                if (found != null) return checked(found, identity.appId(), identity.openId());
+                if (found != null) return checked(found, identity.appId(), identity.openId(), "ACTIVE", domain);
                 Member member = minimalMember();
                 if (members.insert(member) != 1) throw new ResidentLoginException(LOGIN_UNAVAILABLE);
                 WechatIdentity mapping = new WechatIdentity();
@@ -51,12 +65,12 @@ public class WechatIdentityService {
                 mapping.setBindingVersion(1L); mapping.setBindingState("ACTIVE");
                 mapping.setCreateTime(new Date()); mapping.setUpdateTime(mapping.getCreateTime());
                 if (mappings.insert(mapping) != 1) throw new ResidentLoginException(LOGIN_UNAVAILABLE);
-                return checked(mapping, identity.appId(), identity.openId());
+                return checked(mapping, identity.appId(), identity.openId(), "ACTIVE", domain);
             }); // execute returns only after the transaction manager successfully commits.
         } catch (DuplicateKeyException race) {
             // Losing Member INSERT is rolled back too. Read the committed winner in a NEW transaction.
             // A username/id collision without a winner is rejected, never silently treated as a login.
-            try { return committed(() -> checked(find(identity.appId(), identity.openId()), identity.appId(), identity.openId())); }
+            try { return committed(() -> checked(find(identity.appId(), identity.openId()), identity.appId(), identity.openId(), "ACTIVE", domain)); }
             catch (ResidentLoginException known) { throw known; }
             catch (RuntimeException ignored) { throw new ResidentLoginException(LOGIN_UNAVAILABLE); }
         } catch (ResidentLoginException known) { throw known; }
@@ -76,16 +90,19 @@ public class WechatIdentityService {
     public void verify(SessionIdentity identity) {
         verifyState(identity,"ACTIVE");
     }
-    public void verifyPending(SessionIdentity identity) { verifyState(identity,"PENDING"); }
-    private void verifyState(SessionIdentity identity,String state) {
-        properties.requireSchema();
+    public void verifyPending(SessionIdentity identity) {
         if (identity == null || identity.domain() != SessionDomain.RESIDENT) throw new ResidentLoginException(IDENTITY_CONFLICT);
+        verifyState(identity,"PENDING");
+    }
+    private void verifyState(SessionIdentity identity,String state) {
+        if (identity == null) throw new ResidentLoginException(IDENTITY_CONFLICT);
+        requireSchema(identity.domain());
         WechatIdentity mapping = mappings.selectById(identity.bindingId());
         if (mapping == null) throw new ResidentLoginException(IDENTITY_CONFLICT);
-        SessionIdentity current = checked(mapping, identity.application(), mapping.getOpenId(),state);
+        SessionIdentity current = checked(mapping, identity.application(), mapping.getOpenId(), state, identity.domain());
         if (!current.equals(identity)) throw new ResidentLoginException(IDENTITY_CONFLICT);
         // Also reject duplicate/corrupt application keys if a database was provisioned without the required UNIQUE.
-        if (!current.equals(checked(find(mapping.getAppId(), mapping.getOpenId()), mapping.getAppId(), mapping.getOpenId(),state))) {
+        if (!current.equals(checked(find(mapping.getAppId(), mapping.getOpenId()), mapping.getAppId(), mapping.getOpenId(), state, identity.domain()))) {
             throw new ResidentLoginException(IDENTITY_CONFLICT);
         }
     }
@@ -95,10 +112,12 @@ public class WechatIdentityService {
         if (rows == null || rows.size() > 1) throw new ResidentLoginException(IDENTITY_CONFLICT);
         return rows.isEmpty() ? null : rows.getFirst();
     }
-    private SessionIdentity checked(WechatIdentity mapping, String app, String open) {
-        return checked(mapping,app,open,"ACTIVE");
+    private void requireSchema(SessionDomain domain) {
+        if (domain == SessionDomain.RESIDENT) properties.requireSchema();
+        else if (domain == SessionDomain.APPLICANT || domain == SessionDomain.STORE) merchant.requireSchema();
+        else throw new ResidentLoginException(IDENTITY_CONFLICT);
     }
-    private SessionIdentity checked(WechatIdentity mapping,String app,String open,String state) {
+    private SessionIdentity checked(WechatIdentity mapping,String app,String open,String state,SessionDomain domain) {
         if (mapping == null || !Objects.equals(app, mapping.getAppId()) || !Objects.equals(open, mapping.getOpenId())
                 || open == null || !open.matches("[A-Za-z0-9_-]{1,128}")
                 || !state.equals(mapping.getBindingState()) || mapping.getMemberId() == null
@@ -110,7 +129,7 @@ public class WechatIdentityService {
                 || !Boolean.FALSE.equals(member.getDeleteFlag()) || member.getUsername() == null || member.getUsername().isBlank()) {
             throw new ResidentLoginException(IDENTITY_CONFLICT);
         }
-        return new SessionIdentity(member.getId(), SessionDomain.RESIDENT, app, mapping.getId(), mapping.getBindingVersion());
+        return new SessionIdentity(member.getId(), domain, app, mapping.getId(), mapping.getBindingVersion());
     }
     private static Member minimalMember() {
         byte[] random = new byte[32]; new SecureRandom().nextBytes(random);

@@ -9,6 +9,8 @@ import cn.lili.modules.member.service.ClerkService;
 import cn.lili.modules.member.service.MemberService;
 import cn.lili.modules.member.service.StoreMenuService;
 import cn.lili.modules.member.token.StoreTokenGenerate;
+import cn.lili.modules.member.merchant.MerchantAuthorizationService;
+import cn.lili.modules.member.merchant.MerchantAccessException;
 import cn.lili.modules.permission.entity.dos.AdminUser;
 import cn.lili.modules.permission.service.AdminUserService;
 import cn.lili.modules.permission.service.MenuService;
@@ -42,6 +44,12 @@ public class CurrentSessionAuthorization implements SessionAuthorization {
     private final StoreMenuService storeMenus;
     private final ManagerTokenGenerate managerTokens;
     private final StoreTokenGenerate storeTokens;
+    private MerchantAuthorizationService merchantAuthorization;
+
+    @org.springframework.beans.factory.annotation.Autowired(required=false)
+    public void setMerchantAuthorization(MerchantAuthorizationService merchantAuthorization) {
+        this.merchantAuthorization=merchantAuthorization;
+    }
 
     @Override
     public void check(SessionIdentity identity) { current(identity); }
@@ -64,9 +72,19 @@ public class CurrentSessionAuthorization implements SessionAuthorization {
         SessionIdentityVerifier verifier = verifiers.getIfUnique();
         if (verifier == null) throw new SessionException(AUTHORIZATION_REQUIRED);
         verifier.check(identity);
+        if(identity.domain()==SessionDomain.APPLICANT || identity.domain()==SessionDomain.STORE) {
+            if(merchantAuthorization==null) throw new SessionException(AUTHORIZATION_REQUIRED);
+            try {
+                var current=merchantAuthorization.resolve(identity);
+                require(current.domain()==identity.domain()); // An old Applicant is never promoted by Refresh.
+                return current.authUser();
+            } catch(MerchantAccessException unavailable) {
+                throw new SessionException(unavailable.getCode()==MerchantAccessException.Code.DATA_UNAVAILABLE
+                        || unavailable.getCode()==MerchantAccessException.Code.PROOF_SOURCE_PENDING ? AUTHORIZATION_REQUIRED : DENIED);
+            }
+        }
         Member member = member(identity.subject());
-        if (identity.domain() == SessionDomain.APPLICANT) return null; // Never an ordinary AuthUser/STORE.
-        return identity.domain() == SessionDomain.STORE ? store(member) : resident(member);
+        return resident(member);
     }
 
     public AuthUser legacy(AuthUser tokenUser) {

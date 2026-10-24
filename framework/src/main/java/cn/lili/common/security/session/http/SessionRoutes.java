@@ -11,6 +11,7 @@ public final class SessionRoutes {
     public static final String RESIDENT_AVATAR = "/buyer/common/upload/avatar";
     public static final String RESIDENT_LINK = "/buyer/passport/connect/miniProgram/link-existing";
     public static final String APPLICANT = "/store/passport/applicant";
+    public static final String MERCHANT_LOGIN = "/store/passport/wechat/login";
     private SessionRoutes() { }
 
     public static String refresh(SessionDomain domain) { return base(domain) + "/refresh"; }
@@ -47,6 +48,11 @@ public final class SessionRoutes {
 
     public static boolean residentWritePath(String path) {
         return path.equals(RESIDENT_EDIT) || path.equals(RESIDENT_PHONE) || path.equals(RESIDENT_AVATAR) || path.equals(RESIDENT_LINK);
+    }
+
+    /** These Stage 0 reads expose only the newly verified merchant identity, never a legacy JWT. */
+    public static boolean merchantIdentityPath(String path) {
+        return path.equals("/store/member/user") || path.equals("/store/member/user/info");
     }
 
     public static boolean isLegacyRefresh(String method, String path, SessionDomain domain) {

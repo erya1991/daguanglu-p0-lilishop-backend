@@ -5,6 +5,14 @@ package cn.lili.modules.connect.wechat;
 public interface WechatCodeGateway {
     Identity authenticate(String loginCode);
 
+    /** Trusted server domain only. Old Resident test seams cannot silently authenticate a merchant. */
+    default Identity authenticate(String loginCode, cn.lili.common.security.session.SessionDomain domain) {
+        if (domain != cn.lili.common.security.session.SessionDomain.RESIDENT) {
+            throw new ResidentLoginException(ResidentLoginException.Code.CONFIG_REQUIRED);
+        }
+        return authenticate(loginCode);
+    }
+
     record Identity(String appId, String openId, String unionId) {
         public Identity {
             if (!valid(appId) || !valid(openId) || (unionId != null && !valid(unionId))) {
