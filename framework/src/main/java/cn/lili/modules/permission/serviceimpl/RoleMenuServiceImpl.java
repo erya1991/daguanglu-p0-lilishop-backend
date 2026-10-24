@@ -2,6 +2,8 @@ package cn.lili.modules.permission.serviceimpl;
 
 import cn.lili.cache.Cache;
 import cn.lili.cache.CachePrefix;
+import cn.lili.common.enums.ResultCode;
+import cn.lili.common.exception.ServiceException;
 import cn.lili.common.security.enums.UserEnums;
 import cn.lili.modules.permission.entity.dos.RoleMenu;
 import cn.lili.modules.permission.mapper.RoleMenuMapper;
@@ -14,7 +16,10 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 /**
  * 角色菜单业务层实现
@@ -40,17 +45,32 @@ public class RoleMenuServiceImpl extends ServiceImpl<RoleMenuMapper, RoleMenu> i
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void updateRoleMenu(String roleId, List<RoleMenu> roleMenus) {
-        try {
-            //删除角色已经绑定的菜单
-            this.deleteRoleMenu(roleId);
-            //重新保存角色菜单关系
-            this.saveBatch(roleMenus);
-
-            cache.vagueDel(CachePrefix.USER_MENU.getPrefix(UserEnums.MANAGER));
-            cache.vagueDel(CachePrefix.PERMISSION_LIST.getPrefix(UserEnums.MANAGER));
-        } catch (Exception e) {
-            log.error("修改用户权限错误", e);
+        if (roleId == null || roleId.isBlank() || roleMenus == null) {
+            throw new ServiceException(ResultCode.PARAMS_ERROR);
         }
+        List<RoleMenu> replacements = new ArrayList<>(roleMenus.size());
+        Set<String> menuIds = new HashSet<>();
+        for (RoleMenu relation : roleMenus) {
+            if (relation == null || !roleId.equals(relation.getRoleId())
+                    || relation.getMenuId() == null || relation.getMenuId().isBlank()
+                    || relation.getIsSuper() == null || !menuIds.add(relation.getMenuId())) {
+                throw new ServiceException(ResultCode.PARAMS_ERROR);
+            }
+            // Replacement rows must not carry client-selected relation IDs or audit fields.
+            RoleMenu replacement = new RoleMenu();
+            replacement.setRoleId(roleId);
+            replacement.setMenuId(relation.getMenuId());
+            replacement.setIsSuper(relation.getIsSuper());
+            replacements.add(replacement);
+        }
+        // A zero-row delete is valid when this role has no previous grants.
+        this.baseMapper.delete(new QueryWrapper<RoleMenu>().eq("role_id", roleId));
+        if (!replacements.isEmpty() && !this.saveBatch(replacements)) {
+            throw new ServiceException(ResultCode.ERROR);
+        }
+        // Failures must reach the transaction interceptor; never report successful revocation.
+        cache.vagueDel(CachePrefix.USER_MENU.getPrefix(UserEnums.MANAGER));
+        cache.vagueDel(CachePrefix.PERMISSION_LIST.getPrefix(UserEnums.MANAGER));
     }
 
     @Override

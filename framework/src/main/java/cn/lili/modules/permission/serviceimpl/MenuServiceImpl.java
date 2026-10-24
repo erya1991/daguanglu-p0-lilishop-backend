@@ -73,12 +73,10 @@ public class MenuServiceImpl extends ServiceImpl<MenuMapper, Menu> implements Me
 
     @Override
     public List<Menu> findUserList(String userId) {
-        String cacheKey = CachePrefix.USER_MENU.getPrefix(UserEnums.MANAGER) + userId;
-        List<Menu> menuList = (List<Menu>) cache.get(cacheKey);
+        // A previous USER_MENU cache entry cannot restore a revoked menu/button.
+        List<Menu> menuList = this.baseMapper.findByUserId(userId);
         if (menuList == null) {
-            menuList = this.baseMapper.findByUserId(userId);
-            //每5分钟重新确认用户权限
-            cache.put(cacheKey, menuList, 300L);
+            throw new ServiceException(ResultCode.ERROR);
         }
         return menuList;
     }

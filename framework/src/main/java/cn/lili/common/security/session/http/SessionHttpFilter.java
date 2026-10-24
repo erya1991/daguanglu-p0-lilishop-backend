@@ -4,6 +4,7 @@ import cn.lili.common.security.AuthUser;
 import cn.lili.common.security.enums.SecurityEnum;
 import cn.lili.common.security.enums.UserEnums;
 import cn.lili.common.security.session.*;
+import cn.lili.modules.permission.manager.ManagerSessionResponse;
 import cn.lili.common.utils.ResponseUtil;
 import com.google.gson.JsonParser;
 import jakarta.servlet.FilterChain;
@@ -45,7 +46,8 @@ public final class SessionHttpFilter extends OncePerRequestFilter {
         String token = request.getHeader(SecurityEnum.HEADER_TOKEN.getValue());
         try {
             if (method.equals("POST") && ((domain == SessionDomain.RESIDENT && path.equals(SessionRoutes.RESIDENT_LOGIN))
-                    || (domain == SessionDomain.STORE && path.equals(SessionRoutes.MERCHANT_LOGIN)))) {
+                    || (domain == SessionDomain.STORE && path.equals(SessionRoutes.MERCHANT_LOGIN))
+                    || (domain == SessionDomain.MANAGER && path.equals(SessionRoutes.MANAGER_LOGIN)))) {
                 SecurityContextHolder.clearContext(); // Fresh Code login is independent of an old Access header.
                 chain.doFilter(request, response);
                 return;
@@ -62,7 +64,7 @@ public final class SessionHttpFilter extends OncePerRequestFilter {
                         && body.getAsJsonObject().getAsJsonPrimitive("refreshToken").isString());
                 var next = sessions.refresh(body.getAsJsonObject().get("refreshToken").getAsString(),
                         domain, applications.application(domain));
-                reply(response, next);
+                reply(response, domain == SessionDomain.MANAGER ? ManagerSessionResponse.from(next) : next);
                 return;
             }
             if (SessionRoutes.isLegacyRefresh(method, path, domain)
@@ -76,12 +78,12 @@ public final class SessionHttpFilter extends OncePerRequestFilter {
                 chain.doFilter(request, response);
                 return;
             }
-            require(SessionRoutes.allowed(domain, method, path));
+            if (!SessionRoutes.allowed(domain, method, path)) throw new SessionException(DENIED);
             // These endpoints never select a different identity from request fields.
             for (String selector : List.of("memberId", "userId", "applicantId", "storeId", "clerkId", "role", "isSuper", "appId")) {
                 require(request.getParameter(selector) == null);
                 // P05 rejects merchant selectors here; retain the existing Resident/Manager error contracts.
-                if (domain == SessionDomain.APPLICANT || domain == SessionDomain.STORE) {
+                if (domain == SessionDomain.APPLICANT || domain == SessionDomain.STORE || domain == SessionDomain.MANAGER) {
                     require(request.getHeader(selector) == null);
                 }
             }
@@ -114,7 +116,9 @@ public final class SessionHttpFilter extends OncePerRequestFilter {
             }
             chain.doFilter(request, response);
         } catch (SessionException e) {
-            reject(response, e.getCode() == STORE_UNAVAILABLE || e.getCode() == AUTHORIZATION_REQUIRED ? 503 : 403);
+            int status = e.getCode() == STORE_UNAVAILABLE || e.getCode() == AUTHORIZATION_REQUIRED ? 503 : 403;
+            reject(response, status, domain == SessionDomain.MANAGER && e.getCode() == INVALID_CREDENTIAL
+                    ? "SESSION_AUTH_INVALID" : "SESSION_REJECTED");
         } catch (RuntimeException e) {
             reject(response, 403); // No credential, input body, parser cause or URI in diagnostics.
         }
@@ -132,9 +136,12 @@ public final class SessionHttpFilter extends OncePerRequestFilter {
         ResponseUtil.output(response, 200, ResponseUtil.resultMap(true, 200, "SUCCESS", result));
     }
     private static void reject(HttpServletResponse response, int status) {
+        reject(response, status, "SESSION_REJECTED");
+    }
+    private static void reject(HttpServletResponse response, int status, String message) {
         SecurityContextHolder.clearContext();
         response.setHeader("Cache-Control", "no-store");
-        ResponseUtil.output(response, status, ResponseUtil.resultMap(false, status, "SESSION_REJECTED"));
+        ResponseUtil.output(response, status, ResponseUtil.resultMap(false, status, message));
     }
 
     public record Principal(SessionService.VerifiedSession session, AuthUser user) {

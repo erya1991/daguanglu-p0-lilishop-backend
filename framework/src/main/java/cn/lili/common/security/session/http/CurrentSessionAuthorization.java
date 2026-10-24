@@ -14,6 +14,7 @@ import cn.lili.modules.member.merchant.MerchantAccessException;
 import cn.lili.modules.permission.entity.dos.AdminUser;
 import cn.lili.modules.permission.service.AdminUserService;
 import cn.lili.modules.permission.service.MenuService;
+import cn.lili.modules.permission.manager.ManagerAccessPolicy;
 import cn.lili.modules.store.entity.dos.Store;
 import cn.lili.modules.store.entity.enums.StoreStatusEnum;
 import cn.lili.modules.store.service.StoreService;
@@ -45,6 +46,10 @@ public class CurrentSessionAuthorization implements SessionAuthorization {
     private final ManagerTokenGenerate managerTokens;
     private final StoreTokenGenerate storeTokens;
     private MerchantAuthorizationService merchantAuthorization;
+    private ManagerAccessPolicy managerAccessPolicy;
+
+    @org.springframework.beans.factory.annotation.Autowired(required=false)
+    public void setManagerAccessPolicy(ManagerAccessPolicy policy) { this.managerAccessPolicy = policy; }
 
     @org.springframework.beans.factory.annotation.Autowired(required=false)
     public void setMerchantAuthorization(MerchantAuthorizationService merchantAuthorization) {
@@ -67,6 +72,7 @@ public class CurrentSessionAuthorization implements SessionAuthorization {
         require(applications.application(identity.domain()).equals(identity.application()));
         if (identity.domain() == SessionDomain.MANAGER) {
             require(identity.bindingId() == null && identity.bindingVersion() == null);
+            if (managerAccessPolicy != null) managerAccessPolicy.current(identity.subject());
             return manager(identity.subject());
         }
         SessionIdentityVerifier verifier = verifiers.getIfUnique();
@@ -116,8 +122,29 @@ public class CurrentSessionAuthorization implements SessionAuthorization {
 
     public void checkRoute(AuthUser user, String method, String path, boolean stage0) {
         if (user == null || user.getRole() == UserEnums.MEMBER) return;
-        if (stage0 && (method.equals("POST") || path.equals("/store/member/user/info")
-                || path.equals("/store/member/user") || path.equals("/manager/passport/user/info"))) return;
+        if (user.getRole() == UserEnums.MANAGER && managerAccessPolicy != null) {
+            boolean scoped = stage0 || managerAccessPolicy.isConfiguredRoleMember(user.getId());
+            if (scoped) {
+                // Scoped Controllers run only after a verified new Session; allowing a legacy
+                // GET here would reach their historical, unscoped list/read implementations.
+                if (!stage0) throw new SessionException(DENIED);
+                managerAccessPolicy.requireRoute(user.getId(), method, path);
+                return;
+            }
+            // The opt-in W01 write paths cannot be reached with a non-super legacy JWT.
+            // Unrelated historical permissions and historical super handling retain their boundary.
+            if (managerAccessPolicy.enabled() && !Boolean.TRUE.equals(user.getIsSuper())
+                    && SessionRoutes.managerMaintenanceWrite(method, path))
+                throw new SessionException(DENIED);
+        }
+        // Transport/self reads are the only implicit Stage 0 operations. Adding a future
+        // write route must never inherit a blanket POST grant from this adapter.
+        if (stage0 && ((user.getRole() == UserEnums.MANAGER
+                && ((method.equals("POST") && path.equals(SessionRoutes.logout(SessionDomain.MANAGER)))
+                || (method.equals("GET") && path.equals("/manager/passport/user/info"))))
+                || (user.getRole() == UserEnums.STORE
+                && ((method.equals("POST") && path.equals(SessionRoutes.logout(SessionDomain.STORE)))
+                || (method.equals("GET") && SessionRoutes.merchantIdentityPath(path)))))) return;
         if (!stage0 && Boolean.TRUE.equals(user.getIsSuper())) return; // Current DB flag, never JWT flag.
         Map<String, List<String>> permission = permissions(user);
         require(permission != null && (matches(permission.get("SUPER"), path)

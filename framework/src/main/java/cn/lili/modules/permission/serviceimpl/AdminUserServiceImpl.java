@@ -122,20 +122,36 @@ public class AdminUserServiceImpl extends ServiceImpl<AdminUserMapper, AdminUser
     @Override
     @SystemLogPoint(description = "管理员登录", customerLog = "'管理员登录请求:'+#username")
     public Token login(String username, String password) {
+        AdminUser adminUser = authenticate(username, password);
+        try {
+            Token token = managerTokenGenerate.createToken(adminUser, false);
+            if (token == null || CharSequenceUtil.isBlank(token.getAccessToken())
+                    || CharSequenceUtil.isBlank(token.getRefreshToken())) {
+                throw new IllegalStateException("MANAGER_TOKEN_UNAVAILABLE");
+            }
+            return token;
+        } catch (Exception e) {
+            log.error("Manager session issuance failed: {}", e.getClass().getSimpleName());
+            throw new ServiceException(ResultCode.ERROR);
+        }
+    }
+
+    @Override
+    public AdminUser authenticate(String username, String password) {
+        if (CharSequenceUtil.isBlank(username) || CharSequenceUtil.isBlank(password)) {
+            throw new ServiceException(ResultCode.USER_PASSWORD_ERROR);
+        }
         AdminUser adminUser = this.findByUsername(username);
 
-        if (adminUser == null || !adminUser.getStatus()) {
+        if (adminUser == null || !Boolean.TRUE.equals(adminUser.getStatus())
+                || !Boolean.FALSE.equals(adminUser.getDeleteFlag())
+                || CharSequenceUtil.isBlank(adminUser.getPassword())) {
             throw new ServiceException(ResultCode.USER_PASSWORD_ERROR);
         }
         if (!new BCryptPasswordEncoder().matches(password, adminUser.getPassword())) {
             throw new ServiceException(ResultCode.USER_PASSWORD_ERROR);
         }
-        try {
-            return managerTokenGenerate.createToken(adminUser, false);
-        } catch (Exception e) {
-            log.error("管理员登录错误", e);
-        }
-        return null;
+        return adminUser;
 
     }
 

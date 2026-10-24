@@ -34,6 +34,8 @@ public class AdminUserVO extends AdminUser {
 
     public AdminUserVO(AdminUser user) {
         BeanUtil.copyProperties(user, this);
+        // Account list responses must never expose the persisted password hash.
+        setPassword(null);
     }
 
 }

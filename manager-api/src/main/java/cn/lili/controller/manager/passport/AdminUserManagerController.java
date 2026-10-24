@@ -8,6 +8,7 @@ import cn.lili.common.security.AuthUser;
 import cn.lili.common.security.context.UserContext;
 import cn.lili.common.security.enums.UserEnums;
 import cn.lili.common.security.token.Token;
+import cn.lili.common.utils.BeanUtil;
 import cn.lili.common.vo.PageVO;
 import cn.lili.common.vo.ResultMessage;
 import cn.lili.common.vo.SearchVO;
@@ -16,6 +17,8 @@ import cn.lili.modules.permission.entity.dos.AdminUser;
 import cn.lili.modules.permission.entity.dto.AdminUserDTO;
 import cn.lili.modules.permission.entity.vo.AdminUserVO;
 import cn.lili.modules.permission.service.AdminUserService;
+import cn.lili.modules.permission.manager.ManagerSessionLogin;
+import cn.lili.modules.permission.manager.ManagerSessionResponse;
 import cn.lili.modules.verification.entity.enums.VerificationEnums;
 import cn.lili.modules.verification.service.VerificationService;
 import com.baomidou.mybatisplus.core.metadata.IPage;
@@ -56,15 +59,29 @@ public class AdminUserManagerController {
     @Autowired
     private VerificationService verificationService;
 
+    @Autowired(required = false)
+    private ManagerSessionLogin managerSessionLogin;
+    @Autowired(required = false)
+    private ManagerWebSupport managerWeb;
+
     @PostMapping("/login")
     @Operation(description = "登录管理员")
     @Parameter(name = "username", description = "用户名", required = true)
     @Parameter(name = "password", description = "密码", required = true)
     @Parameter(name = "uuid", description = "验证码uuid", required = true)
-    public ResultMessage<Token> login(@NotNull(message = "用户名不能为空") @RequestParam String username,
+    public ResultMessage<Object> login(@NotNull(message = "用户名不能为空") @RequestParam String username,
                                       @NotNull(message = "密码不能为空") @RequestParam String password,
                                       @RequestHeader String uuid) {
         if (verificationService.check(uuid, VerificationEnums.LOGIN)) {
+            boolean requested = ManagerWebSupport.requestedSession();
+            if (requested) {
+                if (managerSessionLogin == null || !managerSessionLogin.enabled())
+                    throw new ServiceException("CONFIG_REQUIRED");
+                ManagerWebSupport.validateLogin();
+                return ResultUtil.data(managerSessionLogin.login(username, password));
+            }
+            if (managerSessionLogin != null && managerSessionLogin.enabled())
+                return ResultUtil.data(managerSessionLogin.legacyLogin(username, password));
             return ResultUtil.data(adminUserService.login(username, password));
         } else {
             throw new ServiceException(ResultCode.VERIFICATION_ERROR);
@@ -87,12 +104,29 @@ public class AdminUserManagerController {
 
     @GetMapping("/info")
     @Operation(description = "获取当前登录用户接口")
-    public ResultMessage<AdminUser> getUserInfo() {
+    public ResultMessage<Object> getUserInfo() {
         AuthUser tokenUser = UserContext.getCurrentUser();
-        if (tokenUser != null) {
-            AdminUser adminUser = adminUserService.findByUsername(tokenUser.getUsername());
-            adminUser.setPassword(null);
-            return ResultUtil.data(adminUser);
+        if (tokenUser != null && tokenUser.getRole() == UserEnums.MANAGER) {
+            AdminUser adminUser = adminUserService.getById(tokenUser.getId());
+            if (adminUser == null || !tokenUser.getId().equals(adminUser.getId())
+                    || !Boolean.TRUE.equals(adminUser.getStatus())
+                    || !Boolean.FALSE.equals(adminUser.getDeleteFlag())) {
+                throw new ServiceException(ResultCode.USER_NOT_LOGIN);
+            }
+            AdminUser response = new AdminUser();
+            BeanUtil.copyProperties(adminUser, response);
+            response.setPassword(null);
+            if (ManagerWebSupport.active()) {
+                if (managerWeb == null) throw new ServiceException("CONFIG_REQUIRED");
+                var result = new java.util.LinkedHashMap<String, Object>();
+                result.put("id", response.getId()); result.put("username", response.getUsername());
+                result.put("nickName", response.getNickName()); result.put("avatar", response.getAvatar());
+                result.put("status", response.getStatus()); result.put("isSuper", false);
+                result.put("sessionProtocol", ManagerSessionResponse.PROTOCOL);
+                result.put("stage0", managerWeb.policy.describe(managerWeb.actor()));
+                return ResultUtil.data(result);
+            }
+            return ResultUtil.data(response);
         }
         throw new ServiceException(ResultCode.USER_NOT_LOGIN);
     }
@@ -154,6 +188,10 @@ public class AdminUserManagerController {
     public ResultMessage<IPage<AdminUserVO>> getByCondition(AdminUserDTO user,
                                                             SearchVO searchVo,
                                                             PageVO pageVo) {
+        if (ManagerWebSupport.active()) {
+            if (managerWeb == null) throw new ServiceException("CONFIG_REQUIRED");
+            return ResultUtil.data(ManagerWebSupport.page(managerWeb.policy.users(managerWeb.actor()), pageVo));
+        }
         IPage<AdminUserVO> page = adminUserService.adminUserPage(user, searchVo, pageVo);
 
         return ResultUtil.data(page);
@@ -181,6 +219,11 @@ public class AdminUserManagerController {
     @Operation(description = "禁/启 用 用户")
     @DemoSite
     public ResultMessage<Object> disable(@Parameter(description = "用户唯一id标识") @PathVariable String userId, Boolean status) {
+        if (ManagerWebSupport.active()) {
+            if (managerWeb == null) throw new ServiceException("CONFIG_REQUIRED");
+            managerWeb.maintenance.setEnabled(managerWeb.actor(), userId, ManagerWebSupport.status(status));
+            return ResultUtil.success();
+        }
         AdminUser user = adminUserService.getById(userId);
         if (user == null) {
             throw new ServiceException(ResultCode.USER_NOT_EXIST);

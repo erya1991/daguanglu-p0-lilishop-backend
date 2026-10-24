@@ -104,6 +104,9 @@ public interface AdminUserService extends IService<AdminUser> {
      */
     Token login(String username, String password);
 
+    /** Password verification only. The caller chooses one server-controlled session protocol. */
+    AdminUser authenticate(String username, String password);
+
     /**
      * 刷新token
      *

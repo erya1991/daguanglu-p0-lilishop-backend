@@ -104,6 +104,7 @@ public class ManagerStoreSecurityConfig {
         http.securityMatcher("/manager/**")
             .headers(h -> h.frameOptions(f -> f.disable()))
             .authorizeHttpRequests(a -> {
+                a.requestMatchers(HttpMethod.POST, SessionRoutes.MANAGER_LOGIN).permitAll();
                 a.requestMatchers(HttpMethod.POST, SessionRoutes.refresh(SessionDomain.MANAGER)).permitAll();
                 a.requestMatchers(SessionRoutes::requiresAuthentication).authenticated();
                 for (String url : ignoredUrlsProperties.getUrls()) {

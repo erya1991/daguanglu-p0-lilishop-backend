@@ -7,6 +7,7 @@ import cn.lili.modules.permission.entity.dos.Menu;
 import cn.lili.modules.permission.entity.dto.MenuSearchParams;
 import cn.lili.modules.permission.entity.vo.MenuVO;
 import cn.lili.modules.permission.service.MenuService;
+import cn.lili.controller.manager.passport.ManagerWebSupport;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -31,6 +32,8 @@ public class MenuManagerController {
 
     @Autowired
     private MenuService menuService;
+    @Autowired(required = false)
+    private ManagerWebSupport managerWeb;
 
     @Operation(description = "搜索菜单")
     @Parameter(name = "searchParams", description = "查询参数")
@@ -74,12 +77,20 @@ public class MenuManagerController {
     @Operation(description = "获取所有菜单")
     @GetMapping("/tree")
     public ResultMessage<List<MenuVO>> getAllMenuList() {
+        if (ManagerWebSupport.active()) {
+            if (managerWeb == null) throw new cn.lili.common.exception.ServiceException("CONFIG_REQUIRED");
+            return ResultUtil.data(ManagerWebSupport.tree(managerWeb.policy.menuTreeNodes(managerWeb.actor())));
+        }
         return ResultUtil.data(menuService.tree());
     }
 
     @Operation(description = "获取所有菜单--根据当前用户角色")
     @GetMapping("/memberMenu")
     public ResultMessage<List<MenuVO>> memberMenu() {
+        if (ManagerWebSupport.active()) {
+            if (managerWeb == null) throw new cn.lili.common.exception.ServiceException("CONFIG_REQUIRED");
+            return ResultUtil.data(ManagerWebSupport.tree(managerWeb.policy.current(managerWeb.actor()).menus()));
+        }
         return ResultUtil.data(menuService.findUserTree());
     }
 }

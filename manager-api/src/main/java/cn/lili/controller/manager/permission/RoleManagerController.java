@@ -5,6 +5,7 @@ import cn.lili.common.vo.PageVO;
 import cn.lili.common.vo.ResultMessage;
 import cn.lili.modules.permission.entity.dos.Role;
 import cn.lili.modules.permission.service.RoleService;
+import cn.lili.controller.manager.passport.ManagerWebSupport;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -27,6 +28,8 @@ import java.util.List;
 public class RoleManagerController {
     @Autowired
     private RoleService roleService;
+    @Autowired(required = false)
+    private ManagerWebSupport managerWeb;
 
     @Operation(description = "添加角色")
     @PostMapping
@@ -40,6 +43,10 @@ public class RoleManagerController {
     @Parameter(name = "pageVo", description = "分页参数")
     @Parameter(name = "role", description = "查询参数")
     public ResultMessage<Page> add(PageVO pageVo, Role role) {
+        if (ManagerWebSupport.active()) {
+            if (managerWeb == null) throw new cn.lili.common.exception.ServiceException("CONFIG_REQUIRED");
+            return ResultUtil.data(ManagerWebSupport.page(managerWeb.policy.roles(managerWeb.actor()), pageVo));
+        }
         Page page = roleService.getRolePage(pageVo, role);
         return ResultUtil.data(page);
     }
