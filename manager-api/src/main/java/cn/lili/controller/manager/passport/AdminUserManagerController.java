@@ -123,7 +123,8 @@ public class AdminUserManagerController {
                 result.put("nickName", response.getNickName()); result.put("avatar", response.getAvatar());
                 result.put("status", response.getStatus()); result.put("isSuper", false);
                 result.put("sessionProtocol", ManagerSessionResponse.PROTOCOL);
-                result.put("stage0", managerWeb.policy.describe(managerWeb.actor()));
+                if(managerWeb.stage1!=null)result.put("stage1",managerWeb.stage1.describe(managerWeb.actor()));
+                else result.put("stage0", managerWeb.policy.describe(managerWeb.actor()));
                 return ResultUtil.data(result);
             }
             return ResultUtil.data(response);

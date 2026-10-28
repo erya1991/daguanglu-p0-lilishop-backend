@@ -47,6 +47,14 @@ public class CurrentSessionAuthorization implements SessionAuthorization {
     private final StoreTokenGenerate storeTokens;
     private MerchantAuthorizationService merchantAuthorization;
     private ManagerAccessPolicy managerAccessPolicy;
+    private SessionAccessExtension extension;
+
+    @org.springframework.beans.factory.annotation.Autowired(required=false)
+    public void setSessionAccessExtension(SessionAccessExtension extension) { this.extension=extension; }
+
+    @Override public void checkRecord(SessionRecord record) {
+        if(extension!=null) extension.checkRecord(record);
+    }
 
     @org.springframework.beans.factory.annotation.Autowired(required=false)
     public void setManagerAccessPolicy(ManagerAccessPolicy policy) { this.managerAccessPolicy = policy; }
@@ -72,7 +80,8 @@ public class CurrentSessionAuthorization implements SessionAuthorization {
         require(applications.application(identity.domain()).equals(identity.application()));
         if (identity.domain() == SessionDomain.MANAGER) {
             require(identity.bindingId() == null && identity.bindingVersion() == null);
-            if (managerAccessPolicy != null) managerAccessPolicy.current(identity.subject());
+            if(extension!=null && extension.ownsManager(identity.subject())) extension.checkManager(identity.subject());
+            else if (managerAccessPolicy != null) managerAccessPolicy.current(identity.subject());
             return manager(identity.subject());
         }
         SessionIdentityVerifier verifier = verifiers.getIfUnique();
@@ -121,6 +130,7 @@ public class CurrentSessionAuthorization implements SessionAuthorization {
     }
 
     public void checkRoute(AuthUser user, String method, String path, boolean stage0) {
+        if(extension!=null && extension.checkRoute(user,method,path,stage0)) return;
         if (user == null || user.getRole() == UserEnums.MEMBER) return;
         if (user.getRole() == UserEnums.MANAGER && managerAccessPolicy != null) {
             boolean scoped = stage0 || managerAccessPolicy.isConfiguredRoleMember(user.getId());

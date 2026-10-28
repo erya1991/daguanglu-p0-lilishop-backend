@@ -10,6 +10,8 @@ package cn.lili.common.security.session;
 @FunctionalInterface
 public interface SessionAuthorization {
     void check(SessionIdentity identity);
+    /** Revocation cutoffs are checked for both Access and Refresh, including after reopening. */
+    default void checkRecord(SessionRecord record) { }
     default void checkHandoff(SessionHandoff handoff) {
         throw new SessionException(SessionException.Code.AUTHORIZATION_REQUIRED);
     }

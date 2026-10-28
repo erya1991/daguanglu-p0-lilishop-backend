@@ -75,6 +75,8 @@ import org.apache.ibatis.type.JdbcType;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
 import org.junit.jupiter.api.extension.*;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mybatis.spring.SqlSessionTemplate;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.dao.DataAccessException;
@@ -123,6 +125,7 @@ class P03MvcPersistenceIntegrationTest {
     private static final List<Map<String, Object>> SQL_ERRORS = new ArrayList<>();
     private static final Map<String, String> PHONE_FIXTURES = new ConcurrentHashMap<>();
     private static final Map<String, WechatCodeGateway.Identity> CODE_FIXTURES = new ConcurrentHashMap<>();
+    private static final Map<String, ResidentLoginException.Code> CODE_FAILURE_FIXTURES = new ConcurrentHashMap<>();
     private static final Set<String> REGISTERED_APPS = ConcurrentHashMap.newKeySet();
     private static final Set<String> REQUESTS = ConcurrentHashMap.newKeySet();
     private static final AtomicBoolean FAILED = new AtomicBoolean();
@@ -264,6 +267,11 @@ class P03MvcPersistenceIntegrationTest {
         signing = new SecretKeyUtil(jwt); jwt.setSecretKey(null);
         sessions = new SessionService(guardedStore(), signing, authorization, Clock.systemUTC());
         WechatCodeGateway gateway = code -> {
+            var failure = CODE_FAILURE_FIXTURES.get(code);
+            if (failure != null) {
+                if (!USED_LOGIN_CODES.add(code)) throw new ResidentLoginException(ResidentLoginException.Code.WECHAT_REJECTED);
+                throw new ResidentLoginException(failure);
+            }
             var identity = CODE_FIXTURES.get(code);
             if (identity == null || !USED_LOGIN_CODES.add(code)) throw new ResidentLoginException(ResidentLoginException.Code.WECHAT_REJECTED);
             return identity;
@@ -523,6 +531,86 @@ class P03MvcPersistenceIntegrationTest {
         assertEquals(0,own(one).get("version").getAsLong());
         var disabled=members.selectById(one.memberId()); disabled.setDisabled(false); members.updateById(disabled);
         status(get("/buyer/passport/member").header("accessToken",one.session().accessToken()),403);
+    }
+
+    /** TC-S0-S02-002-01: one uninterrupted HTTP/DB sequence, not a composition of separate tests. */
+    @Test @Order(13) void API01_profileAndPhoneChangesThenSameWechatLoginKeepOriginalMapping() throws Exception {
+        String open="continuity_"+RUN;
+        var first=apiLogin(open); var original=verified(first).identity();
+        var before=mappings.selectById(original.bindingId());
+        long mappingVersion=before.getBindingVersion();
+        int memberCount=count("SELECT COUNT(*) FROM li_member"), mappingCount=count("SELECT COUNT(*) FROM li_wechat_identity");
+        assertFalse(own(first).get("phoneBound").getAsBoolean());
+        assertEquals(1,success(json(put(SessionRoutes.RESIDENT_EDIT),first,
+                Map.of("version",0,"nickname","稳定映射居民"))).get("version").getAsLong());
+        String firstPhone=phone(), replacement=phone();
+        assertEquals(2,success(json(post(SessionRoutes.RESIDENT_PHONE),first,
+                Map.of("version",1,"phoneCode",phoneFixture(firstPhone),"requestId",request()))).get("version").getAsLong());
+        assertEquals(3,success(json(post(SessionRoutes.RESIDENT_PHONE),first,
+                Map.of("version",2,"phoneCode",phoneFixture(replacement),"requestId",request()))).get("version").getAsLong());
+
+        var again=apiLogin(open); var current=verified(again).identity();
+        assertEquals(first.memberId(),again.memberId()); assertEquals(original,current);
+        assertNotEquals(first.session().sid(),again.session().sid());
+        var after=mappings.selectById(current.bindingId());
+        assertEquals(before.getId(),after.getId()); assertEquals(mappingVersion,after.getBindingVersion());
+        assertEquals("ACTIVE",after.getBindingState());
+        assertEquals(memberCount,count("SELECT COUNT(*) FROM li_member"));
+        assertEquals(mappingCount,count("SELECT COUNT(*) FROM li_wechat_identity"));
+        assertEquals(1,count("SELECT COUNT(*) FROM li_wechat_identity WHERE app_id=? AND open_id=?",APP,open));
+        var latest=own(again);
+        assertEquals("稳定映射居民",latest.get("nickname").getAsString());
+        assertEquals(3,latest.get("version").getAsLong()); assertTrue(latest.get("phoneBound").getAsBoolean());
+        assertTrue(replacement.equals(profileMapper.read(first.memberId()).getMobile()),"latest synthetic phone survives relogin");
+        assertEquals(first.memberId(),own(first).get("memberId").getAsString());
+        assertEquals(0,count("SELECT COUNT(*) FROM li_member_identity_link WHERE mapping_id=?",current.bindingId()));
+    }
+
+    /** R01-004-01: controlled gateway results, real Filter/Controller/Service, no official outbound. */
+    @ParameterizedTest @ValueSource(strings={"expired","consumed","wrong-app","unavailable"}) @Order(14)
+    void API01_gatewayFailureVariantsNeverWriteOrIssueSession(String fault) throws Exception {
+        int memberCount=count("SELECT COUNT(*) FROM li_member"), mappingCount=count("SELECT COUNT(*) FROM li_wechat_identity"), keys=KEYS.size();
+        String code=invalidCode();
+        if(fault.equals("wrong-app")) CODE_FIXTURES.put(code,new WechatCodeGateway.Identity(apps.getMerchantApplication(),"wrong_app_"+RUN,null));
+        else CODE_FAILURE_FIXTURES.put(code,fault.equals("unavailable")?ResidentLoginException.Code.WECHAT_UNAVAILABLE:ResidentLoginException.Code.WECHAT_REJECTED);
+        reject(post(SessionRoutes.RESIDENT_LOGIN).contentType("application/json").content(JSON.toJson(Map.of("loginCode",code))),
+                fault.equals("unavailable")?503:403,fault.equals("unavailable")?"WECHAT_UNAVAILABLE":"WECHAT_REJECTED");
+        assertEquals(memberCount,count("SELECT COUNT(*) FROM li_member"));
+        assertEquals(mappingCount,count("SELECT COUNT(*) FROM li_wechat_identity")); assertEquals(keys,KEYS.size());
+    }
+
+    /** R01-004-02/S02-004-01: mutate only registered synthetic rows; never interpret missing Member as empty history. */
+    @ParameterizedTest @ValueSource(strings={"disabled","deleted","missing-member"}) @Order(15)
+    void API01_inactiveOrOrphanMappingCannotReloginReadOrRefresh(String fault) throws Exception {
+        String open="revoked_"+fault.replace('-','_')+"_"+RUN; var one=apiLogin(open); var identity=verified(one).identity();
+        if(fault.equals("missing-member")) {
+            String missing=SnowFlake.getIdStr(); register("li_member",missing);
+            assertEquals(0,existing("li_member",Set.of(missing)));
+            var mapping=mappings.selectById(identity.bindingId()); mapping.setMemberId(missing);
+            assertEquals(1,mappings.updateById(mapping));
+        } else {
+            var member=members.selectById(one.memberId());
+            if(fault.equals("disabled")) member.setDisabled(false); else member.setDeleteFlag(true);
+            assertEquals(1,members.updateById(member));
+        }
+        int memberCount=count("SELECT COUNT(*) FROM li_member"), mappingCount=count("SELECT COUNT(*) FROM li_wechat_identity"), keys=KEYS.size();
+        reject(post(SessionRoutes.RESIDENT_LOGIN).contentType("application/json").content(JSON.toJson(Map.of("loginCode",loginFixture(open)))),403,"IDENTITY_CONFLICT");
+        status(get("/buyer/passport/member").header("accessToken",one.session().accessToken()),403);
+        status(post(SessionRoutes.refresh(SessionDomain.RESIDENT)).contentType("application/json")
+                .content(JSON.toJson(Map.of("refreshToken",one.session().refreshToken()))),403);
+        assertEquals(memberCount,count("SELECT COUNT(*) FROM li_member"));
+        assertEquals(mappingCount,count("SELECT COUNT(*) FROM li_wechat_identity")); assertEquals(keys,KEYS.size());
+    }
+
+    /** R02-001-01: use the actual second registered Member ID, rather than a selector placeholder. */
+    @Test @Order(16) void API02_actualOtherMemberSelectorsCannotChooseProfile() throws Exception {
+        var a=apiFresh("selectorA"); var b=apiFresh("selectorB");
+        var beforeA=linkSnapshot(a); var beforeB=linkSnapshot(b);
+        reject(get("/buyer/passport/member").header("accessToken",a.session().accessToken()).queryParam("memberId",b.memberId()),403,"SESSION_REJECTED");
+        reject(get("/buyer/passport/member").header("accessToken",a.session().accessToken()).header("memberId",b.memberId()),400,"INVALID_REQUEST");
+        assertEquals(a.memberId(),own(a).get("memberId").getAsString());
+        assertEquals(b.memberId(),own(b).get("memberId").getAsString());
+        assertEquals(beforeA,linkSnapshot(a)); assertEquals(beforeB,linkSnapshot(b));
     }
 
     @AfterEach void noSensitiveLogOutput() {

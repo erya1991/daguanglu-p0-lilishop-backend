@@ -50,6 +50,10 @@ public final class SessionHttpFilter extends OncePerRequestFilter {
                     || (domain == SessionDomain.MANAGER && path.equals(SessionRoutes.MANAGER_LOGIN)))) {
                 SecurityContextHolder.clearContext(); // Fresh Code login is independent of an old Access header.
                 chain.doFilter(request, response);
+                if (response.getStatus() >= 400) {
+                    SessionSecurityAudit.rejected(response, domain, SessionSecurityAudit.Action.LOGIN,
+                            SessionSecurityAudit.Reason.AUTHENTICATION_FAILED, response.getStatus());
+                }
                 return;
             }
             // Exact POST endpoints authenticate their body Refresh, not a possibly expired Access header.
@@ -72,10 +76,15 @@ public final class SessionHttpFilter extends OncePerRequestFilter {
                 throw new SessionException(INVALID_CREDENTIAL);
             }
             if (!SessionProtocol.isStage0(token)) {
+                require(!cn.lili.modules.community.p0.support.Stage1Routes.path(path));
                 require(!SessionRoutes.residentWritePath(path)); // No anonymous/legacy JWT downgrade into R02 writes.
                 require(!SessionRoutes.merchantIdentityPath(path)); // P05 identity reads require a current mapped Session.
                 require(domain != SessionDomain.APPLICANT); // No legacy Applicant fallback.
                 chain.doFilter(request, response);
+                if (SessionRoutes.requiresAuthentication(request) && (response.getStatus() == 401 || response.getStatus() == 403)) {
+                    SessionSecurityAudit.rejected(response, domain, SessionSecurityAudit.action(domain, method, path),
+                            SessionSecurityAudit.Reason.UNVERIFIED_REQUEST, response.getStatus());
+                }
                 return;
             }
             if (!SessionRoutes.allowed(domain, method, path)) throw new SessionException(DENIED);
@@ -109,7 +118,7 @@ public final class SessionHttpFilter extends OncePerRequestFilter {
                 reply(response, null);
                 return;
             }
-            if (domain == SessionDomain.APPLICANT) {
+            if (domain == SessionDomain.APPLICANT && path.equals(SessionRoutes.APPLICANT + "/identity")) {
                 reply(response, Map.of("memberId", verified.identity().subject(), "identity", "APPLICANT",
                         "access", "RESTRICTED", "nextAction", "SHOW_APPLICATION_ENTRY"));
                 return;
@@ -117,9 +126,13 @@ public final class SessionHttpFilter extends OncePerRequestFilter {
             chain.doFilter(request, response);
         } catch (SessionException e) {
             int status = e.getCode() == STORE_UNAVAILABLE || e.getCode() == AUTHORIZATION_REQUIRED ? 503 : 403;
+            SessionSecurityAudit.rejected(response, domain, SessionSecurityAudit.action(domain, method, path),
+                    SessionSecurityAudit.Reason.from(e.getCode()), status);
             reject(response, status, domain == SessionDomain.MANAGER && e.getCode() == INVALID_CREDENTIAL
                     ? "SESSION_AUTH_INVALID" : "SESSION_REJECTED");
         } catch (RuntimeException e) {
+            SessionSecurityAudit.rejected(response, domain, SessionSecurityAudit.action(domain, method, path),
+                    SessionSecurityAudit.Reason.UNEXPECTED_FAILURE, 403);
             reject(response, 403); // No credential, input body, parser cause or URI in diagnostics.
         }
     }

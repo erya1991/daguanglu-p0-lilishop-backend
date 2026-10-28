@@ -31,6 +31,10 @@ public final class MerchantAuthorizationService {
     private final StoreService stores;
     private final MerchantGrantMapper grants;
     private final ObjectProvider<MerchantOwnershipProof> proofs;
+    private MerchantLifecyclePolicy lifecycle;
+
+    @org.springframework.beans.factory.annotation.Autowired(required=false)
+    public void setLifecycle(MerchantLifecyclePolicy lifecycle) { this.lifecycle=lifecycle; }
 
     public MerchantAuthorizationService(SessionApplications applications, MemberService members,
             ClerkService clerks, StoreService stores, MerchantGrantMapper grants,
@@ -59,17 +63,21 @@ public final class MerchantAuthorizationService {
         require(owned.size()<=1,RELATION_CONFLICT);
         if(relations.isEmpty()) {
             // A dangling known Store/owner relation is not evidence of being a normal no-store Applicant.
-            require(owned.isEmpty() && !Boolean.TRUE.equals(member.getHaveStore()) && !text(member.getStoreId()),RELATION_CONFLICT);
+            require((owned.isEmpty() || lifecycle!=null && lifecycle.pendingApplicant(identity,member,owned))
+                    && !Boolean.TRUE.equals(member.getHaveStore()) && !text(member.getStoreId()),RELATION_CONFLICT);
             return new Context(SessionDomain.APPLICANT,member.getId(),null,null,null,Role.APPLICANT,null);
         }
         require(relations.size()==1,RELATION_CONFLICT);
         Clerk clerk=relations.getFirst();
+        if(clerk!=null&&owned.isEmpty()&&lifecycle!=null&&lifecycle.revokedApplicant(identity,member,clerk))
+            return new Context(SessionDomain.APPLICANT,member.getId(),null,null,null,Role.APPLICANT,null);
         require(clerk!=null && text(clerk.getId()) && text(clerk.getStoreId())
                 && member.getId().equals(clerk.getMemberId()) && Boolean.TRUE.equals(clerk.getStatus())
                 && Boolean.FALSE.equals(clerk.getDeleteFlag()) && clerk.getShopkeeper()!=null,RELATION_CONFLICT);
         Store store=stores.getById(clerk.getStoreId());
         require(store!=null && clerk.getStoreId().equals(store.getId()) && text(store.getMemberId())
-                && Boolean.FALSE.equals(store.getDeleteFlag()) && StoreStatusEnum.OPEN.name().equals(store.getStoreDisable())
+                && Boolean.FALSE.equals(store.getDeleteFlag()) && (StoreStatusEnum.OPEN.name().equals(store.getStoreDisable())
+                    || lifecycle!=null && lifecycle.restrictedStore(store))
                 && (store.getStoreEndTime()==null || store.getStoreEndTime().getTime()>System.currentTimeMillis()),RELATION_CONFLICT);
         boolean owner=Boolean.TRUE.equals(clerk.getShopkeeper());
         require(owner==member.getId().equals(store.getMemberId()),RELATION_CONFLICT);

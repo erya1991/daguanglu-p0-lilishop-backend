@@ -89,7 +89,7 @@ public class MenuManagerController {
     public ResultMessage<List<MenuVO>> memberMenu() {
         if (ManagerWebSupport.active()) {
             if (managerWeb == null) throw new cn.lili.common.exception.ServiceException("CONFIG_REQUIRED");
-            return ResultUtil.data(ManagerWebSupport.tree(managerWeb.policy.current(managerWeb.actor()).menus()));
+            return ResultUtil.data(ManagerWebSupport.tree(managerWeb.stage1!=null?managerWeb.stage1.menus(managerWeb.actor()):managerWeb.policy.current(managerWeb.actor()).menus()));
         }
         return ResultUtil.data(menuService.findUserTree());
     }

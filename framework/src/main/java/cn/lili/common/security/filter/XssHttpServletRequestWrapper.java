@@ -61,7 +61,8 @@ public class XssHttpServletRequestWrapper extends HttpServletRequestWrapper {
     public String[] getParameterValues(String name) {
         String[] values = super.getParameterValues(name);
         if (values == null) {
-            return new String[0];
+            // Preserve Servlet's absent-parameter contract so MVC defaults and optional fields work.
+            return null;
         }
         int count = values.length;
         String[] encodedValues = new String[count];
@@ -117,7 +118,7 @@ public class XssHttpServletRequestWrapper extends HttpServletRequestWrapper {
             //对map进行遍历
             for (Map.Entry<String, String[]> entry : parameterMap.entrySet()) {
                 //根据key获取value
-                String[] values = entry.getValue();
+                String[] values = entry.getValue().clone();
                 //遍历数组
                 for (int i = 0; i < values.length; i++) {
                     String description = values[i];

@@ -98,6 +98,17 @@
         </repository>
     </repositories>
 
+    <profiles>
+        <!-- Opt-in only. Keep existing Stage0 target directories and delivered artifacts intact. -->
+        <profile>
+            <id>stage1-output</id>
+            <activation><property><name>p0.s1.outputRoot</name></property></activation>
+            <build>
+                <directory>${p0.s1.outputRoot}/${project.artifactId}/target</directory>
+            </build>
+        </profile>
+    </profiles>
+
     <build>
         <pluginManagement>
             <plugins>

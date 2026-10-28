@@ -35,6 +35,7 @@ public final class SessionService {
                 return current;
             }
             public void check(SessionIdentity identity) { current().check(identity); }
+            public void checkRecord(SessionRecord record) { current().checkRecord(record); }
             public void checkHandoff(SessionHandoff handoff) { current().checkHandoff(handoff); }
         }, Clock.systemUTC());
     }
@@ -87,7 +88,7 @@ public final class SessionService {
         SessionTokens tokens = issue(sid, trustedIdentity, 0, now, accessExpires, absolute);
         var record = new SessionRecord(1, sid, trustedIdentity, SessionRecord.Status.ACTIVE, 0,
                 SessionCredentials.digest(tokens.accessToken()), SessionCredentials.digest(tokens.refreshToken()),
-                now, accessExpires, absolute);
+                now, accessExpires, absolute, clock.millis());
         if (!store.create(record)) throw new SessionException(STORE_UNAVAILABLE);
         return tokens;
     }
@@ -126,7 +127,7 @@ public final class SessionService {
                                        SessionDomain domain, String application) {
         SessionCredentials.Ticket ticket = credentials.decode(token, use, domain, application);
         SessionRecord record = store.load(domain, application, ticket.sid());
-        long now = now();
+        long now = clock.millis();
         if (record == null || !record.sid().equals(ticket.sid()) || record.identity().domain() != domain
                 || !record.identity().application().equals(application) || record.status() != SessionRecord.Status.ACTIVE
                 || now < record.createdAt() || now >= record.absoluteExpiresAt()
@@ -138,6 +139,9 @@ public final class SessionService {
             throw new SessionException(INVALID_CREDENTIAL);
         }
         authorize(record.identity());
+        try { authorization.checkRecord(record); }
+        catch (SessionException known) { throw new SessionException(known.getCode()); }
+        catch (RuntimeException ignored) { throw new SessionException(DENIED); }
         return record;
     }
 
@@ -163,7 +167,8 @@ public final class SessionService {
         }
     }
 
-    // JWT NumericDate is seconds. Keep record and JWT expiries exactly aligned.
+    // JWT NumericDate/expiry is seconds. The record's creation instant retains milliseconds
+    // so a newly authenticated session in the same second as a revocation is distinguishable.
     private long now() {
         return Math.floorDiv(clock.millis(), 1000) * 1000;
     }
@@ -175,6 +180,8 @@ public final class SessionService {
         public String sid() { return record.sid(); }
         public SessionIdentity identity() { return record.identity(); }
         public long generation() { return record.generation(); }
+        public long createdAt() { return record.createdAt(); }
+        public long issuedAt() { return record.issuedAt(); }
 
         @Override
         public String toString() { return "VerifiedSession[REDACTED]"; }

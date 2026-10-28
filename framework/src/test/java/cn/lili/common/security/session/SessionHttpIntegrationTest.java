@@ -24,15 +24,18 @@ import com.google.gson.Gson;
 import com.google.gson.JsonParser;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.mock.web.*;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.context.request.*;
 
 import java.security.SecureRandom;
-import java.time.Clock;
+import java.time.*;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -62,6 +65,212 @@ class SessionHttpIntegrationTest {
                 assertTrue(result.response.getContentAsString().contains("RESTRICTED"));
             }
         }
+    }
+
+    @ParameterizedTest @EnumSource(SessionDomain.class)
+    void freshRefreshMatrixRejectsOtherDomainsWithoutConsumingTheSource(SessionDomain source) throws Exception {
+        var f = new Fixture();
+        var pair = f.issue(source);
+        for (var target : SessionDomain.values()) {
+            if (target == source) continue;
+            var denied = f.refresh(target, pair.refreshToken());
+            assertEquals(403, denied.response.getStatus());
+            assertEquals(0, denied.calls);
+            assertEquals(0, f.state.records.values().iterator().next().generation());
+            assertEquals(200, f.read(source, pair.accessToken()).response.getStatus());
+        }
+        assertEquals(200, f.refresh(source, pair.refreshToken()).response.getStatus());
+        assertEquals(1, f.state.records.values().iterator().next().generation());
+        assertEquals(1, f.state.records.size(), "cross-domain Refresh never creates another Session");
+    }
+
+    @Test void staffHasItsOwnAccessAndFreshRefreshIsolationMatrix() throws Exception {
+        var f = new Fixture();
+        f.clerk.setShopkeeper(false);
+        f.store.setMemberId("synthetic-other-owner");
+        var staff = f.issue(SessionDomain.STORE);
+        for (var target : SessionDomain.values()) {
+            var read = f.read(target, staff.accessToken());
+            assertEquals(target == SessionDomain.STORE ? 200 : 403, read.response.getStatus());
+            assertEquals(target == SessionDomain.STORE ? 1 : 0, read.calls);
+            if (target == SessionDomain.STORE) {
+                assertEquals("synthetic-clerk", read.user.getClerkId());
+                assertEquals("synthetic-store", read.user.getStoreId());
+                assertFalse(read.user.getIsSuper(), "Staff never inherits Owner/super authority");
+            } else {
+                assertEquals(403, f.refresh(target, staff.refreshToken()).response.getStatus());
+            }
+        }
+        var rotated = refreshResult(f.refresh(SessionDomain.STORE, staff.refreshToken()));
+        assertEquals(200, f.read(SessionDomain.STORE, rotated.get("accessToken").getAsString()).response.getStatus());
+        when(f.storeMenus.getUserRoleMenu("synthetic-clerk")).thenReturn(List.of());
+        var current = f.state.records.values().iterator().next();
+        assertEquals(1, current.generation());
+        assertEquals(403, f.read(SessionDomain.STORE, rotated.get("accessToken").getAsString()).response.getStatus());
+        assertEquals(403, f.refresh(SessionDomain.STORE, rotated.get("refreshToken").getAsString()).response.getStatus());
+        verify(f.members, never()).save(any(Member.class));
+        verify(f.stores, never()).save(any(Store.class));
+    }
+
+    @ParameterizedTest @EnumSource(SessionDomain.class)
+    void invalidExpiredRevokedAndWrongPurposeCredentialsNeverInvokeAHandler(SessionDomain domain) throws Exception {
+        var f = new Fixture();
+        var pair = f.issue(domain);
+        for (String invalid : List.of(tamper(pair.accessToken()), pair.refreshToken())) {
+            var denied = f.read(domain, invalid);
+            assertEquals(403, denied.response.getStatus());
+            assertEquals(0, denied.calls);
+        }
+        assertEquals(403, f.refresh(domain, pair.accessToken()).response.getStatus());
+        f.clock.advance(Duration.ofMinutes(15));
+        assertEquals(403, f.read(domain, pair.accessToken()).response.getStatus());
+        var rotated = refreshResult(f.refresh(domain, pair.refreshToken()));
+        assertEquals(200, f.read(domain, rotated.get("accessToken").getAsString()).response.getStatus());
+        var logout = f.run(domain, "POST", SessionRoutes.logout(domain), rotated.get("accessToken").getAsString(), null, Map.of());
+        assertEquals(200, logout.response.getStatus());
+        assertEquals(0, logout.calls);
+        assertEquals(403, f.read(domain, rotated.get("accessToken").getAsString()).response.getStatus());
+        assertEquals(403, f.refresh(domain, rotated.get("refreshToken").getAsString()).response.getStatus());
+        assertEquals(1, f.state.records.size());
+        assertEquals(SessionRecord.Status.REVOKED, f.state.records.values().iterator().next().status());
+    }
+
+    @ParameterizedTest @EnumSource(SessionDomain.class)
+    void deviceOneRefreshAndLogoutLeaveDeviceTwoAndAnotherApplicationUsable(SessionDomain domain) throws Exception {
+        var f = new Fixture();
+        var first = f.issue(domain);
+        var second = f.issue(domain);
+        var otherDomain = domain == SessionDomain.RESIDENT ? SessionDomain.MANAGER : SessionDomain.RESIDENT;
+        var other = f.issue(otherDomain);
+        var current = refreshResult(f.refresh(domain, first.refreshToken()));
+        assertEquals(403, f.read(domain, first.accessToken()).response.getStatus());
+        assertEquals(200, f.read(domain, second.accessToken()).response.getStatus());
+        assertEquals(200, f.run(domain, "POST", SessionRoutes.logout(domain), current.get("accessToken").getAsString(), null, Map.of()).response.getStatus());
+        assertEquals(403, f.refresh(domain, current.get("refreshToken").getAsString()).response.getStatus());
+        assertEquals(200, f.read(domain, second.accessToken()).response.getStatus());
+        assertEquals(200, f.refresh(domain, second.refreshToken()).response.getStatus());
+        assertEquals(200, f.read(otherDomain, other.accessToken()).response.getStatus());
+        assertEquals(200, f.refresh(otherDomain, other.refreshToken()).response.getStatus());
+        assertEquals(3, f.state.records.size());
+    }
+
+    @ParameterizedTest @EnumSource(SessionDomain.class)
+    @ExtendWith(OutputCaptureExtension.class)
+    void unavailableApplicationRemains503AndDoesNotReadSessionStorage(SessionDomain domain, CapturedOutput output) throws Exception {
+        var f = new Fixture();
+        var pair = f.issue(domain);
+        String application = f.apps.application(domain);
+        int loads = f.state.loads;
+        switch (domain) {
+            case RESIDENT -> f.apps.setResidentApplication(null);
+            case APPLICANT, STORE -> f.apps.setMerchantApplication(null);
+            case MANAGER -> f.apps.setManagerApplication(null);
+        }
+        assertAudit(output, f.read(domain, pair.accessToken()), domain, "ACCESS", "AUTHORIZATION_REQUIRED", 503);
+        assertAudit(output, f.refresh(domain, pair.refreshToken()), domain, "REFRESH", "AUTHORIZATION_REQUIRED", 503);
+        assertEquals(loads, f.state.loads, "missing trusted application is not a Token or Redis authorization result");
+        assertEquals(0, f.state.records.values().iterator().next().generation());
+        switch (domain) {
+            case RESIDENT -> f.apps.setResidentApplication(application);
+            case APPLICANT, STORE -> f.apps.setMerchantApplication(application);
+            case MANAGER -> f.apps.setManagerApplication(application);
+        }
+        f.state.unavailable = true;
+        assertAudit(output, f.read(domain, pair.accessToken()), domain, "ACCESS", "STORE_UNAVAILABLE", 503);
+        assertAudit(output, f.refresh(domain, pair.refreshToken()), domain, "REFRESH", "STORE_UNAVAILABLE", 503);
+    }
+
+    @ParameterizedTest @EnumSource(SessionDomain.class)
+    @ExtendWith(OutputCaptureExtension.class)
+    void refusalAuditExistsOnceAndNeverIncludesCredentialsOrRequestData(SessionDomain domain, CapturedOutput output) throws Exception {
+        var f = new Fixture();
+        var pair = f.issue(domain);
+        assertEquals(200, f.read(domain, pair.accessToken()).response.getStatus());
+        assertFalse(output.getAll().contains("STAGE0_SESSION_REJECT"), "successful access is not a refusal");
+        var invalid = f.read(domain, tamper(pair.accessToken()));
+        assertAudit(output, invalid, domain, "ACCESS", "INVALID_CREDENTIAL", 403);
+        var wrongPurpose = f.refresh(domain, pair.accessToken());
+        assertAudit(output, wrongPurpose, domain, "REFRESH", "INVALID_CREDENTIAL", 403);
+        var selector = f.run(domain, "GET", readPath(domain), pair.accessToken(), null,
+                Map.of("memberId", "canary-personal-phone-15500000000"));
+        assertAudit(output, selector, domain, "ACCESS", "INVALID_CREDENTIAL", 403);
+        assertEquals(200, f.run(domain, "POST", SessionRoutes.logout(domain), pair.accessToken(), null, Map.of()).response.getStatus());
+        assertAudit(output, f.read(domain, pair.accessToken()), domain, "ACCESS", "INVALID_CREDENTIAL", 403);
+        var expiry = new Fixture();
+        var expiring = expiry.issue(domain);
+        expiry.clock.advance(Duration.ofMinutes(15));
+        assertAudit(output, expiry.read(domain, expiring.accessToken()), domain, "ACCESS", "INVALID_CREDENTIAL", 403);
+        expiry.clock.advance(domain.absoluteLifetime());
+        assertAudit(output, expiry.refresh(domain, expiring.refreshToken()), domain, "REFRESH", "INVALID_CREDENTIAL", 403);
+        assertFalse(output.getAll().contains(pair.accessToken()));
+        assertFalse(output.getAll().contains(pair.refreshToken()));
+        assertFalse(output.getAll().contains(pair.sid()));
+        assertFalse(output.getAll().contains("synthetic-actor"));
+        assertFalse(output.getAll().contains("15500000000"));
+        assertFalse(output.getAll().contains(expiring.accessToken()));
+        assertFalse(output.getAll().contains(expiring.refreshToken()));
+    }
+
+    @Test @ExtendWith(OutputCaptureExtension.class)
+    void malformedLegacyUriAndUpstreamErrorsHaveOnlyFixedAuditFields(CapturedOutput output) throws Exception {
+        var f = new Fixture();
+        var pair = f.issue(SessionDomain.RESIDENT);
+        String canary = "canary-private-code-cookie-secret";
+        var malformed = f.run(SessionDomain.RESIDENT, "POST", SessionRoutes.refresh(SessionDomain.RESIDENT), null,
+                "{\"refreshToken\":\"" + canary, Map.of());
+        assertAudit(output, malformed, SessionDomain.RESIDENT, "REFRESH", "UNEXPECTED_FAILURE", 403);
+        var legacy = f.run(SessionDomain.RESIDENT, "GET", SessionRoutes.refresh(SessionDomain.RESIDENT) + "/" + pair.refreshToken(), null, null, Map.of());
+        assertAudit(output, legacy, SessionDomain.RESIDENT, "REFRESH", "INVALID_CREDENTIAL", 403);
+        when(f.members.getById("synthetic-actor")).thenThrow(new IllegalStateException(canary));
+        assertAudit(output, f.read(SessionDomain.RESIDENT, pair.accessToken()), SessionDomain.RESIDENT, "ACCESS", "DENIED", 403);
+        assertFalse(output.getAll().contains(canary));
+        assertFalse(output.getAll().contains(pair.refreshToken()));
+        assertFalse(output.getAll().contains("IllegalStateException"));
+    }
+
+    @Test @ExtendWith(OutputCaptureExtension.class)
+    void anonymousAndFailedFreshLoginHaveOneSafeAuditWithoutChangingLegacyResponses(CapturedOutput output) throws Exception {
+        var f = new Fixture();
+        for (var domain : SessionDomain.values()) {
+            assertAudit(output, f.read(domain, null), domain, "ACCESS",
+                    domain == SessionDomain.APPLICANT || domain == SessionDomain.STORE ? "INVALID_CREDENTIAL" : "UNVERIFIED_REQUEST", 403);
+        }
+        for (var domain : List.of(SessionDomain.RESIDENT, SessionDomain.STORE, SessionDomain.MANAGER)) {
+            var request = new MockHttpServletRequest("POST", switch (domain) {
+                case RESIDENT -> SessionRoutes.RESIDENT_LOGIN;
+                case STORE -> SessionRoutes.MERCHANT_LOGIN;
+                default -> SessionRoutes.MANAGER_LOGIN;
+            });
+            var response = new MockHttpServletResponse();
+            new SessionHttpFilter(f.sessions, f.authorization, f.apps, domain).doFilter(request, response, (r, s) -> response.setStatus(400));
+            assertAudit(output, new Result(response, 1, null), domain, "LOGIN", "AUTHENTICATION_FAILED", 400);
+        }
+    }
+
+    private static void assertAudit(CapturedOutput output, Result result, SessionDomain domain, String action, String reason, int status) {
+        assertEquals(status, result.response.getStatus());
+        String id = result.response.getHeader("X-Session-Audit-Id");
+        assertNotNull(id, "a rejected HTTP request needs a traceable safe audit event");
+        assertTrue(id.matches("[a-f0-9]{32}"));
+        var lines = output.getAll().lines().filter(line -> line.contains("eventId=" + id)).toList();
+        assertEquals(1, lines.size(), "one HTTP refusal must not be recorded twice");
+        String event = lines.getFirst();
+        assertTrue(event.contains("STAGE0_SESSION_REJECT"));
+        assertTrue(event.contains("domain=" + domain));
+        assertTrue(event.contains("action=" + action));
+        assertTrue(event.contains("reason=" + reason));
+        assertTrue(event.contains("status=" + status));
+        assertTrue(event.contains("time="));
+    }
+
+    private static com.google.gson.JsonObject refreshResult(Result result) throws Exception {
+        assertEquals(200, result.response.getStatus());
+        return JsonParser.parseString(result.response.getContentAsString()).getAsJsonObject().getAsJsonObject("result");
+    }
+
+    private static String tamper(String token) {
+        int index = token.lastIndexOf('.') + 1;
+        return token.substring(0, index) + (token.charAt(index) == 'A' ? 'B' : 'A') + token.substring(index + 1);
     }
 
     @ParameterizedTest @EnumSource(SessionDomain.class)
@@ -156,13 +365,18 @@ class SessionHttpIntegrationTest {
     }
 
     @ParameterizedTest @EnumSource(SessionDomain.class)
-    void disabledOrDeletedAccountDeniesAccessAndRefresh(SessionDomain domain) throws Exception {
+    @ExtendWith(OutputCaptureExtension.class)
+    void disabledOrDeletedAccountDeniesAccessAndRefresh(SessionDomain domain, CapturedOutput output) throws Exception {
         var f = new Fixture();
         var pair = f.issue(domain);
         if (domain == SessionDomain.MANAGER) f.admin.setStatus(false);
         else f.member.setDisabled(false);
-        assertEquals(403, f.read(domain, pair.accessToken()).response.getStatus());
-        assertEquals(403, f.refresh(domain, pair.refreshToken()).response.getStatus());
+        assertAudit(output, f.read(domain, pair.accessToken()), domain, "ACCESS", "DENIED", 403);
+        assertAudit(output, f.refresh(domain, pair.refreshToken()), domain, "REFRESH", "DENIED", 403);
+        if (domain == SessionDomain.MANAGER) { f.admin.setStatus(true); f.admin.setDeleteFlag(true); }
+        else { f.member.setDisabled(true); f.member.setDeleteFlag(true); }
+        assertAudit(output, f.read(domain, pair.accessToken()), domain, "ACCESS", "DENIED", 403);
+        assertAudit(output, f.refresh(domain, pair.refreshToken()), domain, "REFRESH", "DENIED", 403);
     }
 
     @Test void ownerStaffClerkAndStoreAreReadFromCurrentUniqueRelations() throws Exception {
@@ -248,6 +462,7 @@ class SessionHttpIntegrationTest {
         final Store store = new Store();
         final AdminUser admin = new AdminUser();
         final State state = new State();
+        final MutableClock clock = new MutableClock();
         boolean applicantFixture;
         final CurrentSessionAuthorization authorization;
         final SessionService sessions;
@@ -289,7 +504,7 @@ class SessionHttpIntegrationTest {
             authorization.setMerchantAuthorization(new MerchantAuthorizationService(apps,members,clerks,stores,merchantGrants,ownership));
             byte[] key = new byte[32]; new SecureRandom().nextBytes(key);
             var properties = new JWTTokenProperties(); properties.setSecretKey(Base64.getEncoder().encodeToString(key));
-            sessions = new SessionService(state, new SecretKeyUtil(properties), authorization, Clock.systemUTC());
+            sessions = new SessionService(state, new SecretKeyUtil(properties), authorization, clock);
         }
 
         SessionTokens issue(SessionDomain domain) {
@@ -324,9 +539,15 @@ class SessionHttpIntegrationTest {
 
     private static class State implements SessionService.Store {
         final Map<String, SessionRecord> records = new HashMap<>();
+        int loads;
+        boolean unavailable;
         private String key(SessionRecord value) { return RedisSessionStore.key(value.identity().domain(), value.identity().application(), value.sid()); }
         @Override public synchronized boolean create(SessionRecord value) { return records.putIfAbsent(key(value), value) == null; }
-        @Override public synchronized SessionRecord load(SessionDomain domain, String app, String sid) { return records.get(RedisSessionStore.key(domain, app, sid)); }
+        @Override public synchronized SessionRecord load(SessionDomain domain, String app, String sid) {
+            loads++;
+            if (unavailable) throw new SessionException(STORE_UNAVAILABLE);
+            return records.get(RedisSessionStore.key(domain, app, sid));
+        }
         @Override public synchronized boolean rotate(SessionRecord old, SessionRecord next) {
             if (!old.equals(records.get(key(old))) || old.status() != SessionRecord.Status.ACTIVE) return false;
             records.put(key(old), next); return true;
@@ -336,5 +557,14 @@ class SessionHttpIntegrationTest {
             if (current == null || !current.identity().equals(old.identity())) return false;
             records.put(key(old), current.revoked()); return true;
         }
+    }
+
+    private static class MutableClock extends Clock {
+        private long millis = Math.floorDiv(System.currentTimeMillis(), 1000) * 1000;
+        void advance(Duration value) { millis += value.toMillis(); }
+        @Override public ZoneId getZone() { return ZoneOffset.UTC; }
+        @Override public Clock withZone(ZoneId zone) { return this; }
+        @Override public Instant instant() { return Instant.ofEpochMilli(millis); }
+        @Override public long millis() { return millis; }
     }
 }

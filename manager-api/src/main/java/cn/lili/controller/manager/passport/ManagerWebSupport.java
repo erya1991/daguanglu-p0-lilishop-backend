@@ -27,6 +27,8 @@ import java.util.*;
 public class ManagerWebSupport {
     public final ManagerAccessPolicy policy;
     public final ManagerMaintenanceService maintenance;
+    @org.springframework.beans.factory.annotation.Autowired(required=false)
+    public cn.lili.modules.community.p0.support.Stage1ManagerNavigation stage1;
 
     public static boolean active() {
         var auth = SecurityContextHolder.getContext().getAuthentication();

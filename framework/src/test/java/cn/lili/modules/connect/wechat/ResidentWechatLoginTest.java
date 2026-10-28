@@ -145,6 +145,31 @@ class ResidentWechatLoginTest {
         assertNull(failure.getCause()); assertFalse(failure.toString().contains("synthetic-private-code"));
         verifyNoInteractions(db.members, db.mappings, redis);
     }
+    /** R01-004-01: exercise the real official-response parser AND login service, with no HTTP. */
+    @ParameterizedTest @ValueSource(strings = {"expired", "consumed", "wrong-app", "throttled", "malformed", "transport"})
+    void officialFailureVariantsNeverCreateIdentityOrSession(String fault) {
+        var official = new OfficialWechatCodeGateway(apps, properties, url -> {
+            if (fault.equals("transport")) throw new IllegalStateException("synthetic-private-transport");
+            if (fault.equals("malformed")) return "{not-json";
+            int error = switch (fault) {
+                case "expired" -> 40029;
+                case "consumed" -> 40163;
+                case "wrong-app" -> 40013;
+                default -> 45011;
+            };
+            return "{\"errcode\":" + error + ",\"errmsg\":\"synthetic-private-diagnostic\"}";
+        });
+        var actualLogin = new ResidentWechatLoginService(official, identities, sessions, apps, properties);
+        var rejected = assertThrows(ResidentLoginException.class, () -> actualLogin.login("synthetic-fresh-code"));
+        assertEquals(fault.equals("malformed") || fault.equals("transport")
+                ? ResidentLoginException.Code.WECHAT_UNAVAILABLE : ResidentLoginException.Code.WECHAT_REJECTED,
+                rejected.getCode());
+        assertNull(rejected.getCause());
+        assertFalse(rejected.toString().contains("synthetic-private"));
+        assertTrue(db.committedMembers.isEmpty()); assertTrue(db.committedMappings.isEmpty());
+        assertTrue(sessionsBySid.isEmpty());
+        verifyNoInteractions(db.members, db.mappings, redis);
+    }
     @ParameterizedTest @ValueSource(strings = {"disabled", "deleted", "missing", "pending", "unknown-state", "version", "duplicate", "wrong-case", "wrong-subject"})
     void dirtyOrRevokedMappingCannotLoginAccessOrRefresh(String fault) {
         var pair = login.login("code-one");

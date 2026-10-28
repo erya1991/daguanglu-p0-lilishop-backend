@@ -31,6 +31,8 @@ local function valid(record)
         and record.accessDigest ~= record.refreshDigest
         and integer(record.createdAt) and integer(record.accessExpiresAt) and integer(record.absoluteExpiresAt)
         and record.createdAt < record.accessExpiresAt and record.accessExpiresAt <= record.absoluteExpiresAt
+        and (record.issuedAt == nil or (integer(record.issuedAt)
+            and record.issuedAt >= record.createdAt and record.issuedAt < record.accessExpiresAt))
 end
 local expected = cjson.decode(ARGV[2])
 local replacement = cjson.decode(ARGV[3])
@@ -58,6 +60,7 @@ else
             or current.refreshDigest ~= expected.refreshDigest or current.accessDigest ~= expected.accessDigest
             or replacement.sid ~= current.sid or not identityEqual(replacement.identity, current.identity)
             or replacement.createdAt ~= current.createdAt or replacement.absoluteExpiresAt ~= current.absoluteExpiresAt
+            or (replacement.issuedAt or replacement.createdAt) ~= (current.issuedAt or current.createdAt)
             or replacement.status ~= 'ACTIVE' or replacement.generation ~= current.generation + 1
             or replacement.accessDigest == current.accessDigest or replacement.refreshDigest == current.refreshDigest
             or replacement.accessExpiresAt <= now then return 0 end
