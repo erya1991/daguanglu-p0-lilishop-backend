@@ -1,0 +1,5 @@
+package cn.lili.modules.community.p0.presentation;
+import org.junit.jupiter.api.Test;import org.springframework.context.annotation.ConditionContext;import org.springframework.mock.env.MockEnvironment;import static org.mockito.Mockito.*;import static org.junit.jupiter.api.Assertions.*;
+class ManagerPresentationIsolationTest {
+    @Test void onlyStage1WithoutStage2AssemblesPresentation(){var condition=new ManagerPresentationCondition();for(boolean one:new boolean[]{false,true})for(boolean two:new boolean[]{false,true}){var context=mock(ConditionContext.class);when(context.getEnvironment()).thenReturn(new MockEnvironment().withProperty("p0.stage1.enabled",String.valueOf(one)).withProperty("p0.stage2.enabled",String.valueOf(two)));assertEquals(one&&!two,condition.matches(context,null));}}
+}
