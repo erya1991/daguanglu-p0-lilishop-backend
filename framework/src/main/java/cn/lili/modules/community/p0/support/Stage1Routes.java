@@ -11,6 +11,21 @@ public final class Stage1Routes {
     public record Route(SessionDomain domain,String method,String template,String action,Pattern pattern) { }
     private static final List<Route> ROUTES=new ArrayList<>();
     static {
+        read(SessionDomain.MANAGER,"ui/stage2-goods","goods.read");
+        add(SessionDomain.MANAGER,"GET","/ui/stage2-stores","goods.read");
+        // Stage1 Manager presentation: read-only, finite routes, original action grants.
+        for(String name:List.of("applications"))read(SessionDomain.MANAGER,"ui/"+name,"admission.review");
+        read(SessionDomain.MANAGER,"ui/stores","store.read");
+        for(String name:List.of("staff","history"))add(SessionDomain.MANAGER,"GET","/ui/stores/{id}/"+name,"store.read");
+        add(SessionDomain.MANAGER,"GET","/ui/stores/{id}/point","fulfillment.inspect");
+        read(SessionDomain.MANAGER,"ui/goods","goods.read");
+        add(SessionDomain.MANAGER,"GET","/ui/reviews","goods.review");
+        add(SessionDomain.MANAGER,"GET","/ui/lookups/stores","store.read");
+        add(SessionDomain.MANAGER,"GET","/ui/lookups/agreements","agreement.read");
+        add(SessionDomain.MANAGER,"GET","/ui/lookups/categories","store.read");
+        add(SessionDomain.MANAGER,"GET","/ui/lookups/units","goods.read");
+        for(String name:List.of("channel-configs","receivers"))add(SessionDomain.MANAGER,"GET","/ui/lookups/"+name,"channel.receiver");
+        add(SessionDomain.MANAGER,"GET","/ui/region-names","region.read");
         add(SessionDomain.APPLICANT,"GET","/application","application.read");
         add(SessionDomain.APPLICANT,"GET","/admission-options","application.read");
         add(SessionDomain.STORE,"GET","/admission-options","profile.read");

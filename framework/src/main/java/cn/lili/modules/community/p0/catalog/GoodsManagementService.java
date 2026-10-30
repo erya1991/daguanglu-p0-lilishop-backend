@@ -15,10 +15,13 @@ import java.util.*;
 import static cn.lili.modules.community.p0.support.Stage1Json.*;
 
 @Service
-@ConditionalOnProperty(name="p0.stage1.enabled",havingValue="true")
+@cn.lili.modules.community.p0.support.P0BusinessEnabled
 public class GoodsManagementService {
     private final Stage1Db db;private final Stage1Context context;private final Stage1Access access;private final Stage1Mutations mutations;private final GoodsContentRules rules;private final NativeGoodsProjector nativeGoods;private final EligibilityService eligibility;private final FulfillmentService fulfillment;private final Clock clock;
     public GoodsManagementService(Stage1Db db,Stage1Context context,Stage1Access access,Stage1Mutations mutations,GoodsContentRules rules,NativeGoodsProjector nativeGoods,EligibilityService eligibility,FulfillmentService fulfillment,@Qualifier("stage1Clock") Clock clock){this.db=db;this.context=context;this.access=access;this.mutations=mutations;this.rules=rules;this.nativeGoods=nativeGoods;this.eligibility=eligibility;this.fulfillment=fulfillment;this.clock=clock;}
+    private cn.lili.modules.community.p0.stage2.Stage2StockProjection stockProjection;
+    @org.springframework.beans.factory.annotation.Autowired(required=false)
+    public void setStockProjection(cn.lili.modules.community.p0.stage2.Stage2StockProjection value){stockProjection=value;}
     public Object save(String id,Object body){
         var actor=context.require(SessionDomain.STORE);var f=new Fields(body).only(id==null?new String[]{"requestId","payload"}:new String[]{"requestId","expectedVersion","payload","confirmUnlist"});
         return mutations.run("goods.save:"+id,body,actor.store(),()->{
@@ -96,7 +99,7 @@ public class GoodsManagementService {
         var rows=db.rows(SUPPLY_SELECT+where+" ORDER BY d.updated_at DESC,c.goods_id DESC LIMIT ? OFFSET ?",params.toArray());
         return map("total",count,"records",rows.stream().map(r->view(r,snapshot)).toList());
     }
-    public List<Object> skuViews(String id,boolean cost){return db.rows("SELECT s.*,c.enabled,c.inventory_version,c.cost_version,c.cost_provided,c.weight_provided,c.submitted_once FROM li_goods_sku s JOIN li_p0_sku_control c ON c.sku_id=s.id WHERE c.goods_id=? ORDER BY s.id",id).stream().map(r->{var result=map("id",id(r,"id"),"code",r.get("sn"),"specifications",r.get("specs")==null?List.of():array(r.get("specs")),"priceCent",r.get("price")==null?null:cents(r.get("price")),"quantity",r.get("quantity"),"inventoryVersion",r.get("inventory_version"),"weightGram",r.get("weight")==null?null:new java.math.BigDecimal(String.valueOf(r.get("weight"))).movePointRight(3).longValueExact(),"enabled",flag(r,"enabled"),"submittedOnce",flag(r,"submitted_once"),"image",r.get("original"));if(cost)result.putAll(map("costCent",r.get("cost")==null?null:cents(r.get("cost")),"costVersion",r.get("cost_version")));return (Object)result;}).toList();}
+    public List<Object> skuViews(String id,boolean cost){return db.rows("SELECT s.*,c.enabled,c.inventory_version,c.cost_version,c.cost_provided,c.weight_provided,c.submitted_once"+(stockProjection==null?"":stockProjection.columns())+" FROM li_goods_sku s JOIN li_p0_sku_control c ON c.sku_id=s.id WHERE c.goods_id=? ORDER BY s.id",id).stream().map(r->{var result=map("id",id(r,"id"),"code",r.get("sn"),"specifications",r.get("specs")==null?List.of():array(r.get("specs")),"priceCent",r.get("price")==null?null:cents(r.get("price")),"quantity",r.get("quantity"),"inventoryVersion",r.get("inventory_version"),"weightGram",r.get("weight")==null?null:new java.math.BigDecimal(String.valueOf(r.get("weight"))).movePointRight(3).longValueExact(),"enabled",flag(r,"enabled"),"submittedOnce",flag(r,"submitted_once"),"image",r.get("original"));if(stockProjection!=null)stockProjection.apply(result,r);if(cost)result.putAll(map("costCent",r.get("cost")==null?null:cents(r.get("cost")),"costVersion",r.get("cost_version")));return (Object)result;}).toList();}
     private static final String SKU_FROM=" FROM li_goods_sku s JOIN li_p0_sku_control sc ON sc.sku_id=s.id WHERE sc.goods_id=c.goods_id AND sc.enabled=1 AND s.delete_flag=0";
     private static final String HAS_SKU="EXISTS(SELECT 1"+SKU_FROM+")",HAS_STOCK="EXISTS(SELECT 1"+SKU_FROM+" AND s.quantity>0)",INVALID_STOCK="EXISTS(SELECT 1"+SKU_FROM+" AND (s.quantity IS NULL OR s.quantity<0))";
     private static final String SUPPLY_SELECT="SELECT c.*,g.id AS native_id,g.goods_name,g.market_enable,g.auth_flag,g.price,g.quantity,d.payload,d.updated_at,"+HAS_SKU+" AS has_sku,"+HAS_STOCK+" AS has_stock,"+INVALID_STOCK+" AS invalid_stock";

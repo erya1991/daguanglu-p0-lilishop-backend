@@ -1,0 +1,13 @@
+package cn.lili.modules.community.p0.stage2;
+import cn.lili.modules.community.p0.support.*;
+import cn.lili.common.security.session.SessionDomain;
+import org.junit.jupiter.api.Test;
+import static org.junit.jupiter.api.Assertions.*;
+import static cn.lili.modules.community.p0.support.Stage1Json.*;
+class Stage2ManagerUiTest {
+    @Test void finiteReadRoutesRetainOriginalGrant(){for(String path:new String[]{"/manager/p0/s1/ui/stage2-goods","/manager/p0/s1/ui/stage2-goods/9007199254740993","/manager/p0/s1/ui/stage2-stores"}){var route=Stage1Routes.find(SessionDomain.MANAGER,"GET",path);assertNotNull(route);assertEquals("goods.read",route.action());assertNull(Stage1Routes.find(SessionDomain.MANAGER,"POST",path));assertNull(Stage1Routes.find(SessionDomain.STORE,"GET",path));}}
+    @Test void malformedIdentifiersAndMethodsRemainRejected(){for(String id:new String[]{"0","-1","1%2f2","1;2","1/2","99999999999999999999"})assertNull(Stage1Routes.find(SessionDomain.MANAGER,"GET","/manager/p0/s1/ui/stage2-goods/"+id));assertFalse(new Stage2EntranceGuard().allowed("POST","/manager/p0/s1/ui/stage2-goods"));}
+    @Test void contentProjectionNeverLeaksNestedDraftCostOrNewFields(){var result=Stage2ManagerUiService.safeDetail(map("goods",map("id","9007199254740993"),"payload",map("name","测试商品","skus",java.util.List.of(map("costCent",111)),"internalSecret","never"),"skus",java.util.List.of(map("id","9007199254740994","quantity",0)),"reviews",java.util.List.of(),"regulationHistory",java.util.List.of(),"channelSecret","never"));assertFalse(result.has("channelSecret"));assertFalse(result.getAsJsonObject("payload").has("skus"));assertFalse(result.getAsJsonObject("payload").has("internalSecret"));assertEquals("9007199254740993",result.getAsJsonObject("goods").get("id").getAsString());assertEquals(0,result.getAsJsonArray("skus").get(0).getAsJsonObject().get("quantity").getAsInt());}
+    @Test void stockProjectionPreservesUnknownAndExplicitZero(){var settings=new Stage2Settings();settings.setRunId("S2_20261028_214544");var p=new Stage2StockProjection(settings);assertTrue(p.columns().contains("h.status='HELD'"));assertTrue(p.columns().contains("ELSE NULL"));var target=map("quantity",5,"inventoryVersion",7);p.apply(target,map("held_quantity",0));assertEquals(0,target.get("heldQuantity"));p.apply(target,map("held_quantity",null));assertTrue(target.containsKey("heldQuantity"));assertNull(target.get("heldQuantity"));assertEquals(5,target.get("quantity"));assertEquals(7,target.get("inventoryVersion"));}
+    @Test void sqlScopeCannotBeInjected(){var s=new Stage2Settings();s.setRunId("x' OR 1=1");assertThrows(IllegalArgumentException.class,()->new Stage2StockProjection(s));}
+}

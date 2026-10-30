@@ -16,7 +16,7 @@ import static cn.lili.modules.community.p0.support.Stage1Json.*;
 
 /** Current native roles and exact approved evidence, without isSuper or cached grant shortcuts. */
 @Component
-@ConditionalOnProperty(name="p0.stage1.enabled",havingValue="true")
+@cn.lili.modules.community.p0.support.P0BusinessEnabled
 public class Stage1Access implements SessionAccessExtension, MerchantLifecyclePolicy, MerchantOwnershipProof {
     private final Stage1Db db;
     private final Stage1Settings settings;
@@ -70,6 +70,11 @@ public class Stage1Access implements SessionAccessExtension, MerchantLifecyclePo
     }
     private static boolean readAction(String action){return action.endsWith(".read")||action.equals("fulfillment.inspect");}
     @Override public boolean checkRoute(AuthUser user,String method,String path,boolean verified){
+        if(cn.lili.modules.community.p0.stage2.Stage2Routes.path(path)) {
+            deny(settings.isStage2() && verified && user!=null && user.getRole()==UserEnums.MEMBER
+                    && cn.lili.modules.community.p0.stage2.Stage2Routes.find(SessionDomain.RESIDENT,method,path)!=null);
+            return true;
+        }
         if(Stage1Routes.path(path)) {
             deny(verified);
             SessionDomain domain=user==null?SessionDomain.APPLICANT:switch(user.getRole()){case MANAGER->SessionDomain.MANAGER;case STORE->SessionDomain.STORE;case MEMBER->SessionDomain.RESIDENT;default->throw new SessionException(SessionException.Code.DENIED);};
