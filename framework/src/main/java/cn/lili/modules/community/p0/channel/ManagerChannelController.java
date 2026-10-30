@@ -6,7 +6,7 @@ import org.springframework.http.CacheControl;
 import org.springframework.http.ResponseEntity;
 import java.util.Map;
 @RestController
-@ConditionalOnProperty(name="p0.stage1.enabled",havingValue="true")
+@cn.lili.modules.community.p0.support.P0BusinessEnabled
 @RequestMapping(Stage1Routes.MANAGER)
 public class ManagerChannelController {
     private final ChannelConfigService configs;private final ChannelService channels;private final ReceiverService receivers;

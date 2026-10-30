@@ -5,7 +5,7 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.web.bind.annotation.*;
 import java.util.Map;
 @RestController
-@ConditionalOnProperty(name="p0.stage1.enabled",havingValue="true")
+@cn.lili.modules.community.p0.support.P0BusinessEnabled
 public class FulfillmentController {
     private final FulfillmentService service;private final Stage1Context context;public FulfillmentController(FulfillmentService service,Stage1Context context){this.service=service;this.context=context;}
     @GetMapping(Stage1Routes.STORE+"/fulfillment") public Object configuration(){return Stage1Responses.success(service.configuration(store()));}

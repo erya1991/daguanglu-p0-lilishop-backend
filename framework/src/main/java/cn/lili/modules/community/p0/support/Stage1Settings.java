@@ -16,5 +16,7 @@ public class Stage1Settings {
     private String fileRoot;
     private Set<String> managerRoleIds = Set.of();
     private boolean realOutboundEnabled;
+    /** Set only by the Stage2 compatibility assembly, never by a client request. */
+    private boolean stage2;
     public boolean permitsMode(String candidate){return Set.of("DEV","TEST","PROD").contains(environment)&&Set.of("MOCK","REAL").contains(candidate)&&!(environment.equals("PROD")&&candidate.equals("MOCK"));}
 }

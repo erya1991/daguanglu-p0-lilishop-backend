@@ -6,7 +6,7 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.web.bind.annotation.*;
 import java.util.Map;
 @RestController
-@ConditionalOnProperty(name="p0.stage1.enabled",havingValue="true")
+@cn.lili.modules.community.p0.support.P0BusinessEnabled
 @RequestMapping(Stage1Routes.STORE)
 public class MerchantProfileController {
     private final AdmissionService service;private final Stage1Context context;private final Stage1Access access;

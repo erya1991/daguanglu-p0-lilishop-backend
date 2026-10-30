@@ -87,6 +87,9 @@ import java.util.stream.Collectors;
  */
 @Service
 public class GoodsSkuServiceImpl extends ServiceImpl<GoodsSkuMapper, GoodsSku> implements GoodsSkuService {
+    @org.springframework.beans.factory.annotation.Autowired(required=false)
+    private cn.lili.modules.community.p0.stage2.Stage2NativeBoundary stage2Boundary;
+
 
     /**
      * 缓存
@@ -765,6 +768,7 @@ public class GoodsSkuServiceImpl extends ServiceImpl<GoodsSkuMapper, GoodsSku> i
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void updateStock(String skuId, Integer quantity) {
+        if(stage2Boundary!=null)stage2Boundary.rejectLegacyWrite();
         if (CharSequenceUtil.isEmpty(skuId) || quantity == null || quantity < 0) {
             throw new ServiceException(ResultCode.PARAMS_ERROR);
         }
@@ -786,6 +790,7 @@ public class GoodsSkuServiceImpl extends ServiceImpl<GoodsSkuMapper, GoodsSku> i
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void updateStock(String skuId, Integer quantity, String type) {
+        if(stage2Boundary!=null)stage2Boundary.rejectLegacyWrite();
         if (CharSequenceUtil.isEmpty(skuId) || quantity == null || quantity < 0) {
             throw new ServiceException(ResultCode.PARAMS_ERROR);
         }
@@ -850,6 +855,7 @@ public class GoodsSkuServiceImpl extends ServiceImpl<GoodsSkuMapper, GoodsSku> i
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void updateGoodsStock(List<GoodsSku> goodsSkus) {
+        if(stage2Boundary!=null)stage2Boundary.rejectLegacyWrite();
         Map<String, List<GoodsSku>> groupByGoodsIds = goodsSkus.stream()
                 .collect(Collectors.groupingBy(GoodsSku::getGoodsId));
         for (Map.Entry<String, List<GoodsSku>> entry : groupByGoodsIds.entrySet()) {

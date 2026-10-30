@@ -13,7 +13,7 @@ import static cn.lili.modules.community.p0.support.Stage1Json.*;
 
 /** One transaction for facts, journal, audit and invalidation. Lock: global guard, Admin, Members, Store, objects. */
 @Service
-@ConditionalOnProperty(name="p0.stage1.enabled",havingValue="true")
+@cn.lili.modules.community.p0.support.P0BusinessEnabled
 public class Stage1Mutations {
     private final Stage1Db db;private final Stage1Context context;private final TransactionTemplate tx;private final Clock clock;
     public Stage1Mutations(Stage1Db db,Stage1Context context,PlatformTransactionManager manager,@Qualifier("stage1Clock") Clock clock){this.db=db;this.context=context;this.tx=new TransactionTemplate(manager);this.clock=clock;}

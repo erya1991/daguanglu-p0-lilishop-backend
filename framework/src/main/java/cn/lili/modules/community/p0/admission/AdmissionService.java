@@ -12,7 +12,7 @@ import java.util.*;
 import static cn.lili.modules.community.p0.support.Stage1Json.*;
 
 @Service
-@ConditionalOnProperty(name="p0.stage1.enabled",havingValue="true")
+@cn.lili.modules.community.p0.support.P0BusinessEnabled
 public class AdmissionService {
     private final Stage1Db db;private final Stage1Context context;private final Stage1Mutations mutations;private final AdmissionRules rules;private final Stage1Regions regions;private final StaffTemplates templates;private final Clock clock;
     public AdmissionService(Stage1Db db,Stage1Context context,Stage1Mutations mutations,AdmissionRules rules,Stage1Regions regions,StaffTemplates templates,@Qualifier("stage1Clock") Clock clock){this.db=db;this.context=context;this.mutations=mutations;this.rules=rules;this.regions=regions;this.templates=templates;this.clock=clock;}

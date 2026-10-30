@@ -46,6 +46,9 @@ import java.util.Objects;
 @Slf4j
 @Service
 public class StockUpdateExecute implements OrderStatusChangeEvent {
+    @org.springframework.beans.factory.annotation.Autowired(required=false)
+    private cn.lili.modules.community.p0.stage2.Stage2NativeBoundary stage2Boundary;
+
 
     /**
      * 出库失败消息
@@ -97,6 +100,7 @@ public class StockUpdateExecute implements OrderStatusChangeEvent {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void orderChange(OrderMessage orderMessage) {
+        if(stage2Boundary!=null)return; // Stage2 owns its durable results and A/H ledger.
 
         switch (orderMessage.getNewStatus()) {
             case PAID: {

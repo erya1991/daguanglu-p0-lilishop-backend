@@ -13,7 +13,7 @@ import static cn.lili.modules.community.p0.agreement.AgreementService.*;
 
 /** Commercial rule versions and read-only arithmetic examples. No order snapshot or money operation. */
 @Service
-@ConditionalOnProperty(name="p0.stage1.enabled",havingValue="true")
+@cn.lili.modules.community.p0.support.P0BusinessEnabled
 public class CommissionRuleService {
     private final Stage1Db db;private final Stage1Context context;private final Stage1Mutations mutations;private final AgreementService agreements;private final Clock clock;
     public Object preview(String id,long productPaidCent,long shippingCent){context.require(SessionDomain.MANAGER);var row=raw(id);var f=new Fields(row.get("terms"));long rate=f.integer("rateBps",0,10000,true);f.choice("baseCode",Set.of(BASE),true);f.choice("roundCode",Set.of(ROUND),true);var result=CommissionPreview.calculate(productPaidCent,shippingCent,rate);result.putAll(map("ruleId",id,"revision",row.get("revision"),"version",row.get("version"),"illustrationOnly",true));return result;}

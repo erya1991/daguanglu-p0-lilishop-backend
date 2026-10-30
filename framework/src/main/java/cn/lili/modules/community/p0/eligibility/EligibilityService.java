@@ -15,7 +15,7 @@ import static cn.lili.modules.community.p0.support.Stage1Json.*;
 
 /** Reads one consistent set of current facts. Never writes an eligibility approval or uses a TTL decision. */
 @Service
-@ConditionalOnProperty(name="p0.stage1.enabled",havingValue="true")
+@cn.lili.modules.community.p0.support.P0BusinessEnabled
 public class EligibilityService {
     private final Stage1Db db;private final AgreementService agreements;private final CommissionRuleService rules;private final Stage1Settings settings;private final Clock clock;private final TransactionTemplate read;private final SessionApplications applications;
     public EligibilityService(Stage1Db db,AgreementService agreements,CommissionRuleService rules,Stage1Settings settings,PlatformTransactionManager manager,@Qualifier("stage1Clock") Clock clock,SessionApplications applications){

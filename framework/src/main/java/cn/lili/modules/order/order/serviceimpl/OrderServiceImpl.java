@@ -109,6 +109,9 @@ import java.util.stream.Collectors;
 @Service
 @Slf4j
 public class OrderServiceImpl extends ServiceImpl<OrderMapper, Order> implements OrderService {
+    @org.springframework.beans.factory.annotation.Autowired(required=false)
+    private cn.lili.modules.community.p0.stage2.Stage2NativeBoundary stage2Boundary;
+
 
     private static final String ORDER_SN_COLUMN = "order_sn";
 
@@ -384,6 +387,7 @@ public class OrderServiceImpl extends ServiceImpl<OrderMapper, Order> implements
     @OrderLogPoint(description = "'订单['+#orderSn+']取消，原因为：'+#reason", orderSn = "#orderSn")
     @Transactional(rollbackFor = Exception.class)
     public Order cancel(String orderSn, String reason) {
+        if(stage2Boundary!=null)stage2Boundary.rejectLegacyWrite();
         Order order = OperationalJudgment.judgment(this.getBySn(orderSn));
         //如果订单促销类型不为空&&订单是拼团订单，并且订单未成团，则抛出异常
         if (OrderPromotionTypeEnum.PINTUAN.name().equals(order.getOrderPromotionType())
@@ -421,6 +425,7 @@ public class OrderServiceImpl extends ServiceImpl<OrderMapper, Order> implements
     @OrderLogPoint(description = "'订单['+#orderSn+']系统取消，原因为：'+#reason", orderSn = "#orderSn")
     @Transactional(rollbackFor = Exception.class)
     public void systemCancel(String orderSn, String reason, Boolean refundMoney) {
+        if(stage2Boundary!=null)stage2Boundary.rejectLegacyWrite();
         Order order = this.getBySn(orderSn);
         order.setOrderStatus(OrderStatusEnum.CANCELLED.name());
         order.setCancelReason(reason);
@@ -502,6 +507,7 @@ public class OrderServiceImpl extends ServiceImpl<OrderMapper, Order> implements
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void payOrder(String orderSn, String paymentMethod, String receivableNo) {
+        if(stage2Boundary!=null)stage2Boundary.rejectLegacyWrite();
 
         Order order = this.getBySn(orderSn);
         //如果订单已支付，就不能再次进行支付
@@ -545,6 +551,7 @@ public class OrderServiceImpl extends ServiceImpl<OrderMapper, Order> implements
     @OrderLogPoint(description = "'库存确认'", orderSn = "#orderSn")
     @Transactional(rollbackFor = Exception.class)
     public void afterOrderConfirm(String orderSn) {
+        if(stage2Boundary!=null)stage2Boundary.rejectLegacyWrite();
         // 支付成功后的履约确认：按促销/订单类型分流，互斥 return，避免走错发货或核验链路
         Order order = this.getBySn(orderSn);
         if (order == null) {

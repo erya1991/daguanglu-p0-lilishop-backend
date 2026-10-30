@@ -14,7 +14,7 @@ import static cn.lili.modules.community.p0.support.Stage1Json.*;
 
 /** Local typed material schema mapped to the official ecommerce API, with no generic JSON passthrough. */
 @Component
-@ConditionalOnProperty(name="p0.stage1.enabled",havingValue="true")
+@cn.lili.modules.community.p0.support.P0BusinessEnabled
 public class ChannelMaterials {
     public static final String SCHEMA="WX_ECOMMERCE_S1_20260509";
     /** Omitted fields retain encrypted values; explicit null clears them and validation still applies. */

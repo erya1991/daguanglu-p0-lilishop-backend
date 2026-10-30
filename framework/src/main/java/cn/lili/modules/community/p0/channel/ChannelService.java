@@ -15,7 +15,7 @@ import static cn.lili.modules.community.p0.support.Stage1Json.*;
 
 /** Non-funding onboarding. Commands commit before HTTP; versioned results cannot restore newer restrictions. */
 @Service
-@ConditionalOnProperty(name="p0.stage1.enabled",havingValue="true")
+@cn.lili.modules.community.p0.support.P0BusinessEnabled
 public class ChannelService {
     private final Stage1Db db;private final Stage1Context context;private final Stage1Access access;private final Stage1Mutations mutations;private final ChannelConfigService configs;private final ChannelMaterials materials;private final ChannelVault vault;private final Stage1Files files;private final Stage1Settings settings;private final TransactionTemplate tx;private final Clock clock;
     public ChannelService(Stage1Db db,Stage1Context context,Stage1Access access,Stage1Mutations mutations,ChannelConfigService configs,ChannelMaterials materials,ChannelVault vault,Stage1Files files,Stage1Settings settings,PlatformTransactionManager manager,@Qualifier("stage1Clock") Clock clock){this.db=db;this.context=context;this.access=access;this.mutations=mutations;this.configs=configs;this.materials=materials;this.vault=vault;this.files=files;this.settings=settings;this.tx=new TransactionTemplate(manager);this.clock=clock;}

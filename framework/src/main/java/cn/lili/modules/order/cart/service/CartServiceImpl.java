@@ -75,6 +75,10 @@ import java.util.LinkedHashSet;
 @Slf4j
 @Service
 public class CartServiceImpl implements CartService {
+    @org.springframework.beans.factory.annotation.Autowired(required=false)
+    private cn.lili.modules.community.p0.stage2.Stage2Settings stage2Settings;
+    private void requireLegacyCart(){if(stage2Settings!=null&&stage2Settings.isEnabled())throw new cn.lili.modules.community.p0.support.Stage1Exception(409,"PERSISTENT_CART_COMMAND_REQUIRED");}
+
 
     static String errorMessage = "购物车异常，请稍后重试";
 
@@ -143,6 +147,7 @@ public class CartServiceImpl implements CartService {
 
     @Override
     public void add(String skuId, Integer num, String cartType, Boolean cover) {
+        requireLegacyCart();
         AuthUser currentUser = Objects.requireNonNull(UserContext.getCurrentUser());
         if (num <= 0) {
             throw new ServiceException(ResultCode.CART_NUM_ERROR);
@@ -246,6 +251,7 @@ public class CartServiceImpl implements CartService {
 
     @Override
     public TradeDTO readDTO(CartTypeEnum checkedWay) {
+        requireLegacyCart();
         String cacheKey = this.getOriginKey(checkedWay);
         TradeDTO tradeDTO = null;
         try {
@@ -296,6 +302,7 @@ public class CartServiceImpl implements CartService {
 
     @Override
     public void checked(String skuId, boolean checked) {
+        requireLegacyCart();
         TradeDTO tradeDTO = this.readDTO(CartTypeEnum.CART);
 
         remoteCoupon(tradeDTO);
@@ -312,6 +319,7 @@ public class CartServiceImpl implements CartService {
 
     @Override
     public void checkedStore(String storeId, boolean checked) {
+        requireLegacyCart();
         TradeDTO tradeDTO = this.readDTO(CartTypeEnum.CART);
 
         remoteCoupon(tradeDTO);
@@ -328,6 +336,7 @@ public class CartServiceImpl implements CartService {
 
     @Override
     public void checkedAll(boolean checked) {
+        requireLegacyCart();
         TradeDTO tradeDTO = this.readDTO(CartTypeEnum.CART);
 
         remoteCoupon(tradeDTO);
@@ -351,6 +360,7 @@ public class CartServiceImpl implements CartService {
 
     @Override
     public void delete(String[] skuIds) {
+        requireLegacyCart();
         TradeDTO tradeDTO = this.readDTO(CartTypeEnum.CART);
         List<CartSkuVO> cartSkuVOS = tradeDTO.getSkuList();
         List<CartSkuVO> deleteVos = new ArrayList<>();
@@ -367,10 +377,12 @@ public class CartServiceImpl implements CartService {
 
     @Override
     public void clean() {
+        requireLegacyCart();
         cache.remove(this.getOriginKey(CartTypeEnum.CART));
     }
 
     public void cleanChecked(TradeDTO tradeDTO) {
+        requireLegacyCart();
         List<CartSkuVO> cartSkuVOS = tradeDTO.getSkuList();
         List<CartSkuVO> deleteVos = new ArrayList<>();
         for (CartSkuVO cartSkuVO : cartSkuVOS) {
@@ -390,11 +402,13 @@ public class CartServiceImpl implements CartService {
 
     @Override
     public void resetTradeDTO(TradeDTO tradeDTO) {
+        requireLegacyCart();
         cache.put(this.getOriginKey(tradeDTO.getCartTypeEnum()), tradeDTO);
     }
 
     @Override
     public TradeDTO getCheckedTradeDTO(CartTypeEnum way) {
+        requireLegacyCart();
         return tradeBuilder.buildChecked(way);
     }
 
@@ -406,6 +420,7 @@ public class CartServiceImpl implements CartService {
      */
     @Override
     public Long getCanUseCoupon(CartTypeEnum checkedWay) {
+        requireLegacyCart();
         TradeDTO tradeDTO = this.readDTO(checkedWay);
         long count = 0L;
         double totalPrice = tradeDTO.getSkuList().stream().mapToDouble(i -> i.getPurchasePrice() * i.getNum()).sum();
@@ -442,6 +457,7 @@ public class CartServiceImpl implements CartService {
 
     @Override
     public TradeDTO getAllTradeDTO() {
+        requireLegacyCart();
         return tradeBuilder.buildCart(CartTypeEnum.CART);
     }
 
@@ -498,6 +514,7 @@ public class CartServiceImpl implements CartService {
 
     @Override
     public void shippingAddress(String shippingAddressId, String way) {
+        requireLegacyCart();
 
         //默认购物车
         CartTypeEnum cartTypeEnum = CartTypeEnum.CART;
@@ -513,6 +530,7 @@ public class CartServiceImpl implements CartService {
 
     @Override
     public void shippingSelfAddress(String shopAddressId, String way) {
+        requireLegacyCart();
         //默认购物车
         CartTypeEnum cartTypeEnum = CartTypeEnum.CART;
         if (CharSequenceUtil.isNotEmpty(way)) {
@@ -533,6 +551,7 @@ public class CartServiceImpl implements CartService {
      */
     @Override
     public void shippingReceipt(ReceiptVO receiptVO, String way) {
+        requireLegacyCart();
         CartTypeEnum cartTypeEnum = CartTypeEnum.CART;
         if (CharSequenceUtil.isNotEmpty(way)) {
             cartTypeEnum = CartTypeEnum.valueOf(way);
@@ -551,6 +570,7 @@ public class CartServiceImpl implements CartService {
      */
     @Override
     public void shippingMethod(String deliveryMethod, String way) {
+        requireLegacyCart();
         CartTypeEnum cartTypeEnum = CartTypeEnum.CART;
         if (CharSequenceUtil.isNotEmpty(way)) {
             cartTypeEnum = CartTypeEnum.valueOf(way);
@@ -570,6 +590,7 @@ public class CartServiceImpl implements CartService {
      */
     @Override
     public Long getCartNum(Boolean checked) {
+        requireLegacyCart();
         //构建购物车
         TradeDTO tradeDTO = this.getAllTradeDTO();
         //过滤sku列表
@@ -588,6 +609,7 @@ public class CartServiceImpl implements CartService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void selectCoupon(String couponId, String way, boolean use) {
+        requireLegacyCart();
         AuthUser currentUser = Objects.requireNonNull(UserContext.getCurrentUser());
         //获取购物车，然后重新写入优惠券
         CartTypeEnum cartTypeEnum = getCartType(way);
@@ -623,6 +645,7 @@ public class CartServiceImpl implements CartService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void selectGiftCard(String credentialId, String way, boolean use) {
+        requireLegacyCart();
         CartTypeEnum cartTypeEnum = getCartType(way);
         TradeDTO tradeDTO = this.readDTO(cartTypeEnum);
         List<String> selectedIds = new ArrayList<>();
@@ -655,6 +678,7 @@ public class CartServiceImpl implements CartService {
 
     @Override
     public Trade createTrade(TradeParams tradeParams) {
+        requireLegacyCart();
         //获取购物车
         CartTypeEnum cartTypeEnum = getCartType(tradeParams.getWay());
         TradeDTO tradeDTO = this.readDTO(cartTypeEnum);
@@ -679,6 +703,7 @@ public class CartServiceImpl implements CartService {
 
     @Override
     public List<String> shippingMethodList(String way) {
+        requireLegacyCart();
         TradeDTO tradeDTO = this.getCheckedTradeDTO(CartTypeEnum.valueOf(way));
         // E_COUPON / APPOINTMENT 仅虚拟发货，结算页不展示物流/自提选项
         if (cardKeyService.isECouponOnlyTrade(tradeDTO) || appointmentService.isAppointmentOnlyTrade(tradeDTO)) {

@@ -6,7 +6,7 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
 @RestController
-@ConditionalOnProperty(name="p0.stage1.enabled",havingValue="true")
+@cn.lili.modules.community.p0.support.P0BusinessEnabled
 @RequestMapping({Stage1Routes.MANAGER,Stage1Routes.STORE,Stage1Routes.APPLICANT,Stage1Routes.BUYER})
 public class Stage1CommonController {
     private final Stage1Mutations mutations;private final Stage1Files files;private final Stage1Regions regions;private final Stage1Context context;

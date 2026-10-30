@@ -9,7 +9,7 @@ import java.util.*;
 import static cn.lili.modules.community.p0.support.Stage1Json.*;
 
 @Service
-@ConditionalOnProperty(name="p0.stage1.enabled",havingValue="true")
+@cn.lili.modules.community.p0.support.P0BusinessEnabled
 public class StaffTemplates {
     private final Stage1Db db;private final Clock clock;
     public StaffTemplates(Stage1Db db,@Qualifier("stage1Clock") Clock clock){this.db=db;this.clock=clock;}

@@ -11,7 +11,7 @@ import java.util.*;
 import static cn.lili.modules.community.p0.support.Stage1Json.*;
 
 @Service
-@ConditionalOnProperty(name="p0.stage1.enabled",havingValue="true")
+@cn.lili.modules.community.p0.support.P0BusinessEnabled
 public class AgreementService {
     public static final String BUSINESS="MALL",BASE="PRODUCT_PAID_EXCLUDING_SHIPPING",ROUND="FLOOR_CENT";
     private final Stage1Db db;private final Stage1Context context;private final Stage1Mutations mutations;private final Stage1Files files;private final Clock clock;

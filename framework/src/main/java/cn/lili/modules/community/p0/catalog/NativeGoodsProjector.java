@@ -14,7 +14,7 @@ import static cn.lili.modules.community.p0.support.Stage1Json.*;
 
 /** Reuses LiLiShop's native services and tables. Does not call legacy SKU regeneration/cache-to-DB stock flows. */
 @Component
-@ConditionalOnProperty(name="p0.stage1.enabled",havingValue="true")
+@cn.lili.modules.community.p0.support.P0BusinessEnabled
 public class NativeGoodsProjector {
     private final Stage1Db db;private final GoodsService goods;private final GoodsSkuService skus;private final GoodsContentRules rules;private final CatalogService catalog;private final Stage1Files files;private final Stage1Settings settings;private final Clock clock;
     public NativeGoodsProjector(Stage1Db db,GoodsService goods,GoodsSkuService skus,GoodsContentRules rules,CatalogService catalog,Stage1Files files,Stage1Settings settings,@Qualifier("stage1Clock") Clock clock){this.db=db;this.goods=goods;this.skus=skus;this.rules=rules;this.catalog=catalog;this.files=files;this.settings=settings;this.clock=clock;}

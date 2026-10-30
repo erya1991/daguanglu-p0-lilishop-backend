@@ -4,7 +4,7 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.web.bind.annotation.*;
 import java.util.Map;
 @RestController
-@ConditionalOnProperty(name="p0.stage1.enabled",havingValue="true")
+@cn.lili.modules.community.p0.support.P0BusinessEnabled
 @RequestMapping(Stage1Routes.BUYER)
 public class ConsumerGoodsController {
     private final ConsumerGoodsService service;public ConsumerGoodsController(ConsumerGoodsService service){this.service=service;}

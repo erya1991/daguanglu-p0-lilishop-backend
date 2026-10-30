@@ -5,7 +5,7 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.web.bind.annotation.*;
 import java.util.Map;
 @RestController
-@ConditionalOnProperty(name="p0.stage1.enabled",havingValue="true")
+@cn.lili.modules.community.p0.support.P0BusinessEnabled
 @RequestMapping({Stage1Routes.STORE,Stage1Routes.APPLICANT})
 public class InvitationController {
     private final StaffService service;public InvitationController(StaffService service){this.service=service;}

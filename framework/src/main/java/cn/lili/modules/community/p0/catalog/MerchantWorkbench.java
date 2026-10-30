@@ -9,7 +9,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.Clock;
 import static cn.lili.modules.community.p0.support.Stage1Json.*;
 @RestController
-@ConditionalOnProperty(name="p0.stage1.enabled",havingValue="true")
+@cn.lili.modules.community.p0.support.P0BusinessEnabled
 public class MerchantWorkbench {
     private final Stage1Context context;private final Stage1Access access;private final EligibilityService eligibility;private final GoodsManagementService goods;private final Clock clock;
     public MerchantWorkbench(Stage1Context context,Stage1Access access,EligibilityService eligibility,GoodsManagementService goods,@Qualifier("stage1Clock") Clock clock){this.context=context;this.access=access;this.eligibility=eligibility;this.goods=goods;this.clock=clock;}

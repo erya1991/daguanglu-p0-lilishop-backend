@@ -19,6 +19,7 @@ import java.util.List;
 @Slf4j
 @Service
 public class PaymentServiceImpl implements PaymentService {
+    @Autowired(required=false) private cn.lili.modules.community.p0.stage2.Stage2NativeBoundary stage2Boundary;
 
     @Autowired
     private List<CashierExecute> cashierExecutes;
@@ -27,6 +28,7 @@ public class PaymentServiceImpl implements PaymentService {
 
     @Override
     public void success(PaymentSuccessParams paymentSuccessParams) {
+        if(stage2Boundary!=null)stage2Boundary.rejectLegacyWrite();
 
         //支付状态
         boolean paymentResult = cashierSupport.paymentResult(paymentSuccessParams.getPayParam());
@@ -46,6 +48,7 @@ public class PaymentServiceImpl implements PaymentService {
 
     @Override
     public void adminPaySuccess(PaymentSuccessParams paymentSuccessParams) {
+        if(stage2Boundary!=null)stage2Boundary.rejectLegacyWrite();
 
         log.debug("支付状态修改成功->银行转账");
         //支付结果处理

@@ -8,7 +8,7 @@ import static cn.lili.modules.community.p0.support.Stage1Json.*;
 
 /** Typed text/image blocks, native SKU combinations and exact integer units. No arbitrary HTML or URL input. */
 @Component
-@ConditionalOnProperty(name="p0.stage1.enabled",havingValue="true")
+@cn.lili.modules.community.p0.support.P0BusinessEnabled
 public class GoodsContentRules {
     private final Stage1Db db;private final Stage1Files files;private final CatalogService catalog;
     public GoodsContentRules(Stage1Db db,Stage1Files files,CatalogService catalog){this.db=db;this.files=files;this.catalog=catalog;}

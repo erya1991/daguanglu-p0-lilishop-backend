@@ -77,6 +77,7 @@ public final class SessionHttpFilter extends OncePerRequestFilter {
             }
             if (!SessionProtocol.isStage0(token)) {
                 require(!cn.lili.modules.community.p0.support.Stage1Routes.path(path));
+                require(!cn.lili.modules.community.p0.stage2.Stage2Routes.path(path));
                 require(!SessionRoutes.residentWritePath(path)); // No anonymous/legacy JWT downgrade into R02 writes.
                 require(!SessionRoutes.merchantIdentityPath(path)); // P05 identity reads require a current mapped Session.
                 require(domain != SessionDomain.APPLICANT); // No legacy Applicant fallback.

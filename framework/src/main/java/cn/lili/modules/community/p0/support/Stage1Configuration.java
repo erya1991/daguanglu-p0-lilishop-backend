@@ -8,7 +8,7 @@ import org.springframework.beans.factory.annotation.Qualifier;
 import java.time.Clock;
 
 @Configuration
-@ConditionalOnProperty(name="p0.stage1.enabled", havingValue="true")
+@cn.lili.modules.community.p0.support.P0BusinessEnabled
 @EnableConfigurationProperties(Stage1Settings.class)
 @org.springframework.scheduling.annotation.EnableScheduling
 public class Stage1Configuration {

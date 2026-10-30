@@ -6,7 +6,7 @@ import java.util.*;
 import static cn.lili.modules.community.p0.support.Stage1Json.*;
 /** UI locations are finite. Permissions always come from current native Role/Menu assignments. */
 @Component
-@ConditionalOnProperty(name="p0.stage1.enabled",havingValue="true")
+@cn.lili.modules.community.p0.support.P0BusinessEnabled
 public class Stage1ManagerNavigation {
     private final Stage1Access access;private final Stage1Settings settings;public Stage1ManagerNavigation(Stage1Access access,Stage1Settings settings){this.access=access;this.settings=settings;}
     private static final String[][] PAGES={

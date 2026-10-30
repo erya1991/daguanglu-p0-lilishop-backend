@@ -12,7 +12,7 @@ import java.util.*;
 import static cn.lili.modules.community.p0.support.Stage1Json.*;
 
 @Service
-@ConditionalOnProperty(name="p0.stage1.enabled",havingValue="true")
+@cn.lili.modules.community.p0.support.P0BusinessEnabled
 public class ChannelConfigService {
     private final Stage1Db db;private final Stage1Context context;private final Stage1Mutations mutations;private final Stage1Settings settings;private final ChannelVault vault;private final PlatformTransactionManager manager;private final Clock clock;private final SessionApplications applications;
     public ChannelConfigService(Stage1Db db,Stage1Context context,Stage1Mutations mutations,Stage1Settings settings,ChannelVault vault,PlatformTransactionManager manager,@Qualifier("stage1Clock") Clock clock,SessionApplications applications){this.db=db;this.context=context;this.mutations=mutations;this.settings=settings;this.vault=vault;this.manager=manager;this.clock=clock;this.applications=applications;}

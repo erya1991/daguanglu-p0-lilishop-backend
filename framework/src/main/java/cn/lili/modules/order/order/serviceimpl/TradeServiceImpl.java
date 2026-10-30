@@ -47,6 +47,9 @@ import java.util.stream.Collectors;
  */
 @Service
 public class TradeServiceImpl extends ServiceImpl<TradeMapper, Trade> implements TradeService {
+    @org.springframework.beans.factory.annotation.Autowired(required=false)
+    private cn.lili.modules.community.p0.stage2.Stage2NativeBoundary stage2Boundary;
+
 
     /**
      * 缓存
@@ -103,6 +106,7 @@ public class TradeServiceImpl extends ServiceImpl<TradeMapper, Trade> implements
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Trade createTrade(TradeDTO tradeDTO) {
+        if(stage2Boundary!=null)stage2Boundary.rejectLegacyWrite();
         //创建订单预校验
         createTradeCheck(tradeDTO);
         Trade trade = new Trade(tradeDTO);
@@ -165,6 +169,7 @@ public class TradeServiceImpl extends ServiceImpl<TradeMapper, Trade> implements
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void payTrade(String tradeSn, String paymentName, String receivableNo) {
+        if(stage2Boundary!=null)stage2Boundary.rejectLegacyWrite();
         LambdaQueryWrapper<Order> orderQueryWrapper = new LambdaQueryWrapper<>();
         orderQueryWrapper.eq(Order::getTradeSn, tradeSn);
         List<Order> orders = orderService.list(orderQueryWrapper);

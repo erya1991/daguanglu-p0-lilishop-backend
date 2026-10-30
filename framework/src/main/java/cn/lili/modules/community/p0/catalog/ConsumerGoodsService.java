@@ -17,11 +17,17 @@ import static cn.lili.modules.community.p0.support.Stage1Json.*;
 
 /** One repeatable-read view of native Goods/Sku facts. Deliberately has no writer, cache or event dependency. */
 @Service
-@ConditionalOnProperty(name="p0.stage1.enabled",havingValue="true")
+@cn.lili.modules.community.p0.support.P0BusinessEnabled
 public class ConsumerGoodsService {
     private final Stage1Db db;private final Stage1Context context;private final EligibilityService eligibility;private final FulfillmentService fulfillment;private final Stage1Settings settings;private final Clock clock;private final TransactionTemplate read;
     public ConsumerGoodsService(Stage1Db db,Stage1Context context,EligibilityService eligibility,FulfillmentService fulfillment,Stage1Settings settings,PlatformTransactionManager manager,@Qualifier("stage1Clock") Clock clock){this.db=db;this.context=context;this.eligibility=eligibility;this.fulfillment=fulfillment;this.settings=settings;this.clock=clock;read=new TransactionTemplate(manager);read.setReadOnly(true);read.setIsolationLevel(TransactionDefinition.ISOLATION_REPEATABLE_READ);}
     public Object detail(String id){context.require(SessionDomain.RESIDENT);return read.execute(tx->detailValue(id));}
+    /** Pure supply projection for an already authorized application/trusted recovery actor. No HTTP route. */
+    public Map<String,Object> currentDetail(String id){return read.execute(tx->detailValue(id));}
+    public Object currentPrecheck(String store,Map<String,Long> quantities,String method,JsonObject address,String point){
+        Stage1Exception.require(!quantities.isEmpty()&&quantities.size()<=200,422,"ITEMS_REQUIRED");
+        return read.execute(tx->precheckValue(store,quantities,method,address,point));
+    }
     private Map<String,Object> detailValue(String id){
         var row=goods(id,null);String store=id(row,"store_id");var state=eligibility.evaluate(store,id(row,"category_id"),null);var reasons=contentReasons(row);reasons.addAll(eligibilityReasons(state));var methods=methods(row,fulfillment.effective(store));if(methods.isEmpty())reasons.add("NO_EFFECTIVE_METHOD");
         var skus=db.rows("SELECT s.id,s.sn,s.specs,s.price,s.weight,s.quantity,s.original,c.inventory_version,c.enabled FROM li_goods_sku s JOIN li_p0_sku_control c ON c.sku_id=s.id WHERE c.goods_id=? AND s.delete_flag=0 AND c.enabled=1 ORDER BY s.id",id);

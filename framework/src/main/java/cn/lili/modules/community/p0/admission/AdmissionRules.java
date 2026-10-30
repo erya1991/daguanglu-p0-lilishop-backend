@@ -10,7 +10,7 @@ import java.util.*;
 import static cn.lili.modules.community.p0.support.Stage1Json.*;
 
 @Component
-@ConditionalOnProperty(name="p0.stage1.enabled",havingValue="true")
+@cn.lili.modules.community.p0.support.P0BusinessEnabled
 public class AdmissionRules {
     private final Stage1Db db;private final Stage1Regions regions;private final Stage1Files files;private final Clock clock;
     public AdmissionRules(Stage1Db db,Stage1Regions regions,Stage1Files files,@Qualifier("stage1Clock") Clock clock){this.db=db;this.regions=regions;this.files=files;this.clock=clock;}

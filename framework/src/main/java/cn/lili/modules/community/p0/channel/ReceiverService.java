@@ -13,7 +13,7 @@ import static cn.lili.modules.community.p0.support.Stage1Json.*;
 
 /** Platform receiver master data, referenced by Stores; this class never creates a profit-sharing order. */
 @Service
-@ConditionalOnProperty(name="p0.stage1.enabled",havingValue="true")
+@cn.lili.modules.community.p0.support.P0BusinessEnabled
 public class ReceiverService {
     private final Stage1Db db;private final Stage1Context context;private final Stage1Access access;private final Stage1Mutations mutations;private final ChannelConfigService configs;private final ChannelVault vault;private final TransactionTemplate tx;private final Clock clock;
     public ReceiverService(Stage1Db db,Stage1Context context,Stage1Access access,Stage1Mutations mutations,ChannelConfigService configs,ChannelVault vault,PlatformTransactionManager manager,@Qualifier("stage1Clock") Clock clock){this.db=db;this.context=context;this.access=access;this.mutations=mutations;this.configs=configs;this.vault=vault;this.tx=new TransactionTemplate(manager);this.clock=clock;}

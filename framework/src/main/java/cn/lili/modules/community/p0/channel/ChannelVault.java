@@ -14,7 +14,7 @@ import static cn.lili.modules.community.p0.support.Stage1Json.*;
 
 /** AES-GCM envelopes with a separate run-owned key; business tables retain opaque references only. */
 @Component
-@ConditionalOnProperty(name="p0.stage1.enabled",havingValue="true")
+@cn.lili.modules.community.p0.support.P0BusinessEnabled
 public class ChannelVault {
     private final Stage1Settings settings;private final SecureRandom random=new SecureRandom();
     public ChannelVault(Stage1Settings settings){this.settings=settings;}

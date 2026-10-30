@@ -1,0 +1,73 @@
+package cn.lili.modules.community.p0.stage2;
+
+import cn.lili.modules.community.p0.agreement.*;
+import cn.lili.modules.community.p0.catalog.ConsumerGoodsService;
+import cn.lili.modules.community.p0.fulfillment.FulfillmentService;
+import cn.lili.modules.community.p0.support.*;
+import com.google.gson.*;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.stereotype.Service;
+import java.time.*;
+import java.util.*;
+import static cn.lili.modules.community.p0.support.Stage1Json.*;
+
+@Service @ConditionalOnProperty(name="p0.stage2.enabled",havingValue="true")
+public class Stage2QuoteService {
+    private final Stage1Db db;private final Stage2Transactions tx;private final Stage2Cart cart;private final Stage2Addresses addresses;
+    private final ConsumerGoodsService consumer;private final FulfillmentService fulfillment;private final CommissionRuleService rules;private final Clock clock;
+    public Stage2QuoteService(Stage1Db db,Stage2Transactions tx,Stage2Cart cart,Stage2Addresses addresses,ConsumerGoodsService consumer,FulfillmentService fulfillment,CommissionRuleService rules,@Qualifier("stage1Clock")Clock clock){this.db=db;this.tx=tx;this.cart=cart;this.addresses=addresses;this.consumer=consumer;this.fulfillment=fulfillment;this.rules=rules;this.clock=clock;}
+    public Object quote(Object body){String member=tx.member();var stores=new TreeSet<String>();for(var value:new Fields(body).list("items",1,200,true))stores.add(id(cart.sku(new Fields(value).id("skuId",true)),"store_id"));return tx.locked(member,stores,()->{var payload=build(member,body,false);String quoteId=db.id();String digest=hash(payload.get("commercial"));var created=clock.instant();db.update("INSERT INTO li_p0_quote VALUES(?,?,?,?,?,?)",quoteId,member,write(payload),digest,created,created.plusSeconds(300));return publicView(quoteId,payload,digest,created,created.plusSeconds(300));});}
+    public Map<String,Object> stored(String quoteId,String member){return db.required("SELECT * FROM li_p0_quote WHERE id=? AND member_id=?",quoteId,member);}
+    public Map<String,Object> build(String member,Object body,boolean paymentRecheck){
+        var f=new Fields(body).only("items","stores");var items=f.list("items",1,200,true);var choices=f.list("stores",1,50,true);
+        Map<String,List<Map<String,Object>>> groups=new TreeMap<>(Comparator.comparingLong(Long::parseLong));var seen=new HashSet<String>();
+        for(var raw:items){var line=new Fields(raw).only("skuId","quantity","cartId","expectedVersion");String skuId=line.id("skuId",true);Stage1Exception.require(seen.add(skuId),422,"DUPLICATE_SKU");long quantity=line.integer("quantity",1,99,true);var sku=cart.sku(skuId);String store=id(sku,"store_id");
+            if(line.has("cartId")&&!paymentRecheck){var source=db.required("SELECT * FROM li_p0_cart_item WHERE id=? AND member_id=? AND deleted=0 AND quantity>0",line.id("cartId",true),member);Stage1Exception.require(skuId.equals(id(source,"sku_id"))&&number(source,"version")==line.version()&&number(source,"quantity")>=quantity,409,"CART_VERSION_CONFLICT");}
+            groups.computeIfAbsent(store,k->new ArrayList<>()).add(map("skuId",skuId,"goodsId",id(sku,"goods_id"),"quantity",quantity,"cartId",line.id("cartId",false),"cartVersion",line.has("cartId")?line.version():null));
+        }
+        Stage1Exception.require(groups.size()<=50,422,"STORE_CAPACITY");Map<String,Fields> selected=new HashMap<>();
+        for(var raw:choices){var choice=new Fields(raw).only("storeId","method","addressId","addressVersion","pointId","contact","remark","addressSnapshot");Stage1Exception.require(paymentRecheck||!choice.has("addressSnapshot"),422,"ADDRESS_SNAPSHOT_FORBIDDEN");String store=choice.id("storeId",true);Stage1Exception.require(groups.containsKey(store)&&selected.put(store,choice)==null,422,"STORE_SELECTION_INVALID");}
+        Stage1Exception.require(selected.keySet().equals(groups.keySet()),422,"STORE_SELECTION_REQUIRED");var publicOrders=new ArrayList<Object>();var internalOrders=new ArrayList<Object>();var commercial=new ArrayList<Object>();String platformKey=null;long total=0;
+        for(var entry:groups.entrySet()){
+            String store=entry.getKey();Fields choice=selected.get(store);String method=choice.choice("method",Stage1Rules.METHODS,true),point=choice.id("pointId",false);boolean delivery=Set.of("MERCHANT_DELIVERY","EXPRESS").contains(method);
+            Map<String,Object> address=null;JsonObject district=null;
+            if(delivery){if(paymentRecheck&&choice.has("addressSnapshot"))address=plain(choice.child("addressSnapshot",true));else{address=addresses.snapshot(choice.id("addressId",true),member);Stage1Exception.require(((Number)address.get("version")).longValue()==choice.integer("addressVersion",0,Long.MAX_VALUE,true),409,"ADDRESS_VERSION_CONFLICT");}district=object(map("provinceCode",address.get("provinceCode"),"cityCode",address.get("cityCode"),"districtCode",address.get("districtCode")));Stage1Exception.require(point==null,422,"POINT_NOT_APPLICABLE");}
+            else Stage1Exception.require(!choice.has("addressId")&&!choice.has("addressSnapshot"),422,"ADDRESS_NOT_APPLICABLE");
+            var quantities=new LinkedHashMap<String,Long>();for(var line:entry.getValue())quantities.put((String)line.get("skuId"),((Number)line.get("quantity")).longValue());
+            var pre=object(consumer.currentPrecheck(store,quantities,method,district,point));var reasons=pre.getAsJsonArray("reasonCodes").asList().stream().map(JsonElement::getAsString).filter(r->!paymentRecheck||!r.equals("OUT_OF_STOCK")).toList();
+            if(!reasons.isEmpty()||!pre.getAsJsonArray("missing").isEmpty())throw new Stage1Exception(409,"CHECKOUT_UNAVAILABLE",map("storeId",store,"reasonCodes",reasons,"missing",pre.get("missing")));
+            var contact=new Fields(choice.child("contact",true)).only("name","mobile");String contactName=contact.text("name",1,30,true),mobile=contact.text("mobile",11,11,true);Stage1Exception.require(mobile.matches("1[0-9]{10}"),422,"MOBILE_INVALID");String remark=choice.text("remark",0,200,false);
+            var methodConfig=fulfillment.effective(store).get(method);Stage1Exception.require(methodConfig!=null&&methodConfig.has("feeCent"),409,"FEE_CONFIGURATION_REQUIRED");long fee=new Fields(methodConfig).integer("feeCent",0,999999,true);if(!delivery)Stage1Exception.require(fee==0,409,"FREE_METHOD_FEE_INVALID");
+            long goodsCent=0;var lines=new ArrayList<Object>();
+            for(var line:entry.getValue()){var sku=cart.sku((String)line.get("skuId"));Stage1Exception.require(flag(sku,"enabled"),409,"SKU_DISABLED");long unit=cents(sku.get("price")),quantity=((Number)line.get("quantity")).longValue();goodsCent=Stage2Money.add(goodsCent,Stage2Money.item(unit,quantity));var detail=object(consumer.currentDetail(id(sku,"goods_id")));lines.add(map("skuId",id(sku,"id"),"goodsId",id(sku,"goods_id"),"name",detail.get("name"),"specifications",sku.get("specs"),"image",sku.get("original"),"unitPriceCent",unit,"quantity",quantity,"cartId",line.get("cartId"),"cartVersion",line.get("cartVersion")));}
+            var rule=rules.findEffectiveRule(store,AgreementService.BUSINESS,clock.instant());Stage1Exception.require(rule!=null,409,"RULE_MISSING");long rate=number(rule,"rate_bps"),amount=Stage2Money.add(goodsCent,fee),commission=Stage2Money.commission(goodsCent,rate);total=Stage2Money.add(total,amount);
+            var channel=db.required("SELECT r.id,r.sub_mchid,r.version,r.config_id,c.provider_mchid,c.payment_appid,c.config_version FROM li_p0_submerchant_relation r JOIN li_p0_channel_config c ON c.id=r.config_id WHERE r.store_id=? AND r.mode='MOCK' AND r.active_store_key IS NOT NULL",store);
+            String currentPlatform=id(channel,"provider_mchid")+":"+id(channel,"payment_appid");if(platformKey==null)platformKey=currentPlatform;else if(!platformKey.equals(currentPlatform))throw new Stage1Exception(409,"CHANNEL_SET_CONFLICT",map("storeId",store));
+            Object pointSnapshot=point==null?null:pointSnapshot(point,store);
+            var obligation=map("storeId",store,"storeName",id(db.required("SELECT store_name FROM li_store WHERE id=?",store),"store_name"),"items",lines,"method",method,"address",address==null?null:addressObligation(address),"point",pointSnapshot,"contact",map("name",contactName,"mobile",mobile),"remark",remark,"goodsCent",goodsCent,"freightCent",fee,"amountCent",amount);
+            publicOrders.add(obligation);
+            var funds=map("rateBps",rate,"ruleId",id(rule,"id"),"revision",rule.get("revision"),"terms",object(rule.get("terms")),"agreementId",id(rule,"agreement_id"),"commissionCent",commission,"merchantCent",amount-commission,"channel",channel,"futureFundsIntent",true,"fundsExecutionEnabled",false);
+            internalOrders.add(map("order",obligation,"funds",funds,"sourceVersions",pre.get("sourceVersions")));
+            // Business obligations, not cache/inventory versions, drive reconfirmation.
+            var semantics=obligations(obligation);
+            commercial.add(map("order",semantics,"rule",map("id",id(rule,"id"),"revision",rule.get("revision"),"terms",object(rule.get("terms"))),"channel",map("relationId",id(channel,"id"),"configId",id(channel,"config_id"),"subMchid",channel.get("sub_mchid"),"providerMchid",channel.get("provider_mchid"),"appId",channel.get("payment_appid"))));
+        }
+        return map("input",f.json(),"orders",publicOrders,"internalOrders",internalOrders,"commercial",commercial,"amountCent",total,"mode","MOCK");
+    }
+    private Object pointSnapshot(String point,String store){var full=object(fulfillment.pointView(fulfillment.point(point,store),false));var safe=new JsonObject();for(String key:List.of("id","storeId","type","name","address","phone","opening","instructions","provinceCode","cityCode","districtCode","contactName","coordinates","version"))safe.add(key,full.get(key));return safe;}
+    /** Read-only, no quote/stock creation; usable methods/points come from the same supply precheck. */
+    public Object options(Object body){
+        String member=tx.member();var f=new Fields(body).only("items","addresses");var groups=new TreeMap<String,Map<String,Long>>();var seen=new HashSet<String>();
+        for(var raw:f.list("items",1,200,true)){var item=new Fields(raw).only("skuId","quantity","cartId","expectedVersion");String sku=item.id("skuId",true);Stage1Exception.require(seen.add(sku),422,"DUPLICATE_SKU");String store=id(cart.sku(sku),"store_id");groups.computeIfAbsent(store,k->new LinkedHashMap<>()).put(sku,item.integer("quantity",1,99,true));}
+        Stage1Exception.require(groups.size()<=50,422,"STORE_CAPACITY");var selected=new HashMap<String,Fields>();for(var raw:f.list("addresses",0,50,false)){var choice=new Fields(raw).only("storeId","addressId","addressVersion");String store=choice.id("storeId",true);Stage1Exception.require(groups.containsKey(store)&&selected.put(store,choice)==null,422,"STORE_SELECTION_INVALID");}
+        return tx.locked(member,groups.keySet(),()->{var result=new ArrayList<Object>();for(var e:groups.entrySet()){JsonObject district=null;var choice=selected.get(e.getKey());if(choice!=null){var address=addresses.snapshot(choice.id("addressId",true),member);Stage1Exception.require(((Number)address.get("version")).longValue()==choice.integer("addressVersion",0,Long.MAX_VALUE,true),409,"ADDRESS_VERSION_CONFLICT");district=object(map("provinceCode",address.get("provinceCode"),"cityCode",address.get("cityCode"),"districtCode",address.get("districtCode")));}result.add(map("storeId",e.getKey(),"storeName",id(db.required("SELECT store_name FROM li_store WHERE id=?",e.getKey()),"store_name"),"precheck",consumer.currentPrecheck(e.getKey(),e.getValue(),null,district,null)));}return map("stores",result,"mode","MOCK","serverTime",clock.instant());});
+    }
+
+    /** DEC-05 retains display history and compares current commercial obligations only. */
+    public static JsonObject obligations(Object value){var result=object(value).deepCopy();result.remove("storeName");for(var raw:result.getAsJsonArray("items")){var item=raw.getAsJsonObject();for(String field:List.of("cartId","cartVersion","name","image"))item.remove(field);}if(result.has("point")&&!result.get("point").isJsonNull()){var point=result.getAsJsonObject("point");for(String field:List.of("version","updatedAt","name","phone","contactName","opening","instructions"))point.remove(field);}return result;}
+    public static Object changes(JsonArray before,JsonArray after){var next=new HashMap<String,JsonObject>();for(var raw:after){var o=raw.getAsJsonObject();next.put(o.getAsJsonObject("order").get("storeId").getAsString(),o);}var changes=new ArrayList<Object>();for(var raw:before){var old=raw.getAsJsonObject();var oldOrder=old.getAsJsonObject("order");String store=oldOrder.get("storeId").getAsString();var current=next.get(store);var fields=new LinkedHashSet<String>();if(current==null)fields.add("店铺可交易条件");else{var order=current.getAsJsonObject("order");if(!hash(oldOrder.get("items")).equals(hash(order.get("items"))))fields.add("商品、规格或单价");if(!hash(oldOrder.get("freightCent")).equals(hash(order.get("freightCent"))))fields.add("配送或物流费用");for(String key:List.of("method","point","address","contact"))if(!hash(oldOrder.get(key)).equals(hash(order.get(key))))fields.add("实际履约信息");for(String key:List.of("rule","channel"))if(!hash(old.get(key)).equals(hash(current.get(key))))fields.add("店铺交易条件");}if(!fields.isEmpty())changes.add(map("storeId",store,"fields",fields));}return changes;}
+    public static Map<String,Object> addressObligation(Map<String,Object> address){var copy=new LinkedHashMap<>(address);copy.remove("version");copy.remove("isDefault");copy.remove("alias");return copy;}
+    private static Map<String,Object> plain(Object value){return new GsonBuilder().setObjectToNumberStrategy(ToNumberPolicy.BIG_DECIMAL).create().fromJson(write(value),new com.google.gson.reflect.TypeToken<Map<String,Object>>(){}.getType());}
+    public static Object publicView(String id,Map<String,Object> payload,String digest,Instant created,Instant expiry){return map("quoteId",id,"confirmationHash",digest,"orders",payload.get("orders"),"amountCent",payload.get("amountCent"),"mode","MOCK","generatedAt",created,"expiresAt",expiry,"serverTime",created);}
+}

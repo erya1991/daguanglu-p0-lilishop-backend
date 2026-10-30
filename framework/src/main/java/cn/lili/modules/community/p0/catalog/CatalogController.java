@@ -4,7 +4,7 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.web.bind.annotation.*;
 import java.util.Map;
 @RestController
-@ConditionalOnProperty(name="p0.stage1.enabled",havingValue="true")
+@cn.lili.modules.community.p0.support.P0BusinessEnabled
 public class CatalogController {
     private final CatalogService service;public CatalogController(CatalogService service){this.service=service;}
     @GetMapping({Stage1Routes.APPLICANT+"/admission-options",Stage1Routes.STORE+"/admission-options"}) public Object admissionOptions(){return Stage1Responses.success(service.admissionOptions());}

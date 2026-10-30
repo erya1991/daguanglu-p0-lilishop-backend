@@ -6,7 +6,7 @@ import java.util.*;
 import static cn.lili.modules.community.p0.support.Stage1Json.*;
 
 @Service
-@ConditionalOnProperty(name="p0.stage1.enabled",havingValue="true")
+@cn.lili.modules.community.p0.support.P0BusinessEnabled
 public class Stage1Regions {
     private final Stage1Db db;public Stage1Regions(Stage1Db db){this.db=db;}
     public Map<String,Object> address(Fields f,boolean required){

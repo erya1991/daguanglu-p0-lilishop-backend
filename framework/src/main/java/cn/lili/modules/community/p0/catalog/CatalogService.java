@@ -11,7 +11,7 @@ import java.util.*;
 import static cn.lili.modules.community.p0.support.Stage1Json.*;
 
 @Service
-@ConditionalOnProperty(name="p0.stage1.enabled",havingValue="true")
+@cn.lili.modules.community.p0.support.P0BusinessEnabled
 public class CatalogService {
     private final Stage1Db db;private final Stage1Context context;private final Stage1Mutations mutations;private final Clock clock;
     public CatalogService(Stage1Db db,Stage1Context context,Stage1Mutations mutations,@Qualifier("stage1Clock") Clock clock){this.db=db;this.context=context;this.mutations=mutations;this.clock=clock;}

@@ -23,6 +23,9 @@ import java.util.List;
 @Component
 @Slf4j
 public class OrderMessageListener {
+    @org.springframework.beans.factory.annotation.Autowired(required=false)
+    private cn.lili.modules.community.p0.stage2.Stage2NativeBoundary stage2Boundary;
+
 
     /**
      * ??
@@ -53,6 +56,7 @@ public class OrderMessageListener {
      * @param messageExt
      */
     public void orderStatusEvent(QueueMessage messageExt) {
+        if(stage2Boundary!=null)return; // Stage2 owns its durable results and A/H ledger.
 
         switch (OrderTagsEnum.valueOf(messageExt.getTags())) {
             //????

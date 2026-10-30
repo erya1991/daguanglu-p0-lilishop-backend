@@ -7,7 +7,7 @@ import org.springframework.web.bind.annotation.*;
 import java.time.Instant;
 import static cn.lili.modules.community.p0.support.Stage1Json.*;
 @RestController
-@ConditionalOnProperty(name="p0.stage1.enabled",havingValue="true")
+@cn.lili.modules.community.p0.support.P0BusinessEnabled
 public class EligibilityController {
     private final Stage1Context context;private final EligibilityService eligibility;private final AgreementService agreements;private final CommissionRuleService rules;
     public EligibilityController(Stage1Context context,EligibilityService eligibility,AgreementService agreements,CommissionRuleService rules){this.context=context;this.eligibility=eligibility;this.agreements=agreements;this.rules=rules;}

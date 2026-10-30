@@ -9,7 +9,7 @@ import java.time.Instant;
 import java.util.*;
 
 @Repository
-@ConditionalOnProperty(name="p0.stage1.enabled",havingValue="true")
+@cn.lili.modules.community.p0.support.P0BusinessEnabled
 public class Stage1Db {
     private final JdbcTemplate jdbc;
     private static final Set<String> NATIVE_INSERT = Set.of("li_store","li_store_detail","li_clerk","li_clerk_role","li_store_role","li_store_menu_role","li_store_menu","li_goods","li_goods_sku","li_goods_gallery","li_store_address","li_category","li_goods_unit","li_file");
