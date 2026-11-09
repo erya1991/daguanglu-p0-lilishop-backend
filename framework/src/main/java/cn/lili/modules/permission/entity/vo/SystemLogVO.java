@@ -64,7 +64,18 @@ public class SystemLogVO implements Serializable {
     private Long storeId = -1L;
 
     public void setMapToParams(Map<String, String[]> paramMap) {
-        this.requestParam = ObjectUtil.mapToString(paramMap);
+        Map<String, String[]> safe = new java.util.LinkedHashMap<>();
+        if (paramMap != null) paramMap.forEach((key, values) -> {
+            String normalized = key == null ? "" : key.toLowerCase(java.util.Locale.ROOT).replaceAll("[^a-z0-9]", "");
+            boolean secret = normalized.contains("password") || normalized.contains("passwd")
+                    || normalized.contains("token") || normalized.contains("secret")
+                    || normalized.contains("credential") || normalized.contains("privatekey")
+                    || normalized.contains("apikey") || normalized.contains("authorization")
+                    || normalized.equals("code") || normalized.endsWith("logincode")
+                    || normalized.endsWith("phonecode") || normalized.equals("key");
+            safe.put(key, secret ? new String[]{"[REDACTED]"} : values);
+        });
+        this.requestParam = ObjectUtil.mapToString(safe);
     }
 
     public static SystemLogVO fromEntity(SystemLog entity) {

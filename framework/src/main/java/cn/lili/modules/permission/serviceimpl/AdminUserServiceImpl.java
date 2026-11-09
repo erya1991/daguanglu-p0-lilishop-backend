@@ -9,7 +9,6 @@ import cn.lili.common.security.AuthUser;
 import cn.lili.common.security.context.UserContext;
 import cn.lili.common.security.enums.UserEnums;
 import cn.lili.common.security.token.Token;
-import cn.lili.common.utils.BeanUtil;
 import cn.lili.common.utils.StringUtils;
 import cn.lili.common.vo.PageVO;
 import cn.lili.common.vo.SearchVO;
@@ -194,17 +193,22 @@ public class AdminUserServiceImpl extends ServiceImpl<AdminUserMapper, AdminUser
     @Transactional(rollbackFor = Exception.class)
     public boolean updateAdminUser(AdminUser adminUser, List<String> roles) {
 
-        if (roles != null && !roles.isEmpty()) {
-
-            if (roles.size() > rolesMaxSize) {
-                throw new ServiceException(ResultCode.PERMISSION_BEYOND_TEN);
-            }
-            adminUser.setRoleIds(CharSequenceUtil.join(",", roles));
-
-            updateRole(adminUser.getId(), roles);
-        } else {
-            adminUser.setRoleIds("");
+        AdminUser current = this.getById(adminUser.getId());
+        if (current == null) throw new ServiceException(ResultCode.USER_NOT_EXIST);
+        // Restrict profile edits; credential, account status and super flag are not profile fields.
+        current.setUsername(adminUser.getUsername());
+        current.setNickName(adminUser.getNickName());
+        current.setAvatar(adminUser.getAvatar());
+        current.setEmail(adminUser.getEmail());
+        current.setMobile(adminUser.getMobile());
+        current.setDescription(adminUser.getDescription());
+        current.setDepartmentId(adminUser.getDepartmentId());
+        if (roles != null) {
+            roles = validatedRoles(roles);
+            current.setRoleIds(CharSequenceUtil.join(",", roles));
+            updateRole(current.getId(), roles);
         }
+        adminUser = current;
 
         this.updateById(adminUser);
         return true;
@@ -241,11 +245,19 @@ public class AdminUserServiceImpl extends ServiceImpl<AdminUserMapper, AdminUser
     @Transactional(rollbackFor = Exception.class)
     public void saveAdminUser(AdminUserDTO adminUser, List<String> roles) {
         AdminUser dbUser = new AdminUser();
-        BeanUtil.copyProperties(adminUser, dbUser);
+        roles = validatedRoles(roles);
+        dbUser.setUsername(adminUser.getUsername());
+        dbUser.setPassword(adminUser.getPassword());
+        dbUser.setNickName(adminUser.getNickName());
+        dbUser.setAvatar(adminUser.getAvatar());
+        dbUser.setMobile(adminUser.getMobile());
+        dbUser.setEmail(adminUser.getEmail());
+        dbUser.setDescription(adminUser.getDescription());
+        dbUser.setDepartmentId(adminUser.getDepartmentId());
+        dbUser.setIsSuper(false);
+        dbUser.setStatus(true);
+        dbUser.setDeleteFlag(false);
         dbUser.setPassword(new BCryptPasswordEncoder().encode(dbUser.getPassword()));
-        if (roles.size() > rolesMaxSize) {
-            throw new ServiceException(ResultCode.PERMISSION_BEYOND_TEN);
-        }
         if (!roles.isEmpty()) {
             dbUser.setRoleIds(CharSequenceUtil.join(",", roles));
         }
@@ -275,18 +287,28 @@ public class AdminUserServiceImpl extends ServiceImpl<AdminUserMapper, AdminUser
      * @param userId 用户id
      * @param roles  角色id集合
      */
+    private List<String> validatedRoles(List<String> roles) {
+        if (roles == null) return List.of();
+        if (roles.size() > rolesMaxSize) throw new ServiceException(ResultCode.PERMISSION_BEYOND_TEN);
+        if (roles.stream().anyMatch(id -> id == null || id.isBlank())
+                || new java.util.HashSet<>(roles).size() != roles.size())
+            throw new ServiceException(ResultCode.PARAMS_ERROR);
+        if (!roles.isEmpty() && roleService.listByIds(roles).size() != roles.size())
+            throw new ServiceException(ResultCode.PARAMS_ERROR);
+        return List.copyOf(roles);
+    }
+
     private void updateRole(String userId, List<String> roles) {
 
         QueryWrapper queryWrapper = new QueryWrapper();
         queryWrapper.eq("user_id", userId);
         userRoleService.remove(queryWrapper);
 
-        if (roles.isEmpty()) {
-            return;
+        if (!roles.isEmpty()) {
+            List<UserRole> userRoles = new ArrayList<>(roles.size());
+            roles.forEach(id -> userRoles.add(new UserRole(userId, id)));
+            userRoleService.updateUserRole(userId, userRoles);
         }
-        List<UserRole> userRoles = new ArrayList<>(roles.size());
-        roles.forEach(id -> userRoles.add(new UserRole(userId, id)));
-        userRoleService.updateUserRole(userId, userRoles);
         cache.vagueDel(CachePrefix.USER_MENU.getPrefix(UserEnums.MANAGER));
         cache.vagueDel(CachePrefix.PERMISSION_LIST.getPrefix(UserEnums.MANAGER));
     }
