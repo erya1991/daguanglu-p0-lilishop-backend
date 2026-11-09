@@ -107,6 +107,11 @@ public class Stage1Files {
         var row=db.required("SELECT * FROM li_p0_file_control WHERE file_id=? AND store_id=? AND purpose='GOODS' AND private_file=0 AND status='BOUND'",fileId,goods.get("store_id"));
         return new Download(fileId,id(row,"mime_type"),readBytes(row),false);
     }
+    /** Internal historical order adapter: caller proves immutable item reference and order scope. */
+    public Download historicalGoodsImage(String file,String store,String goods){
+        var row=db.required("SELECT * FROM li_p0_file_control WHERE file_id=? AND store_id=? AND bound_object_id=? AND purpose='GOODS' AND private_file=0 AND status='BOUND'",file,store,goods);
+        return new Download(file,id(row,"mime_type"),readBytes(row),false);
+    }
     private byte[] readBytes(Map<String,Object> row){
         try{
             Path file=storage(flag(row,"private_file"),id(row,"storage_key"));
@@ -132,7 +137,7 @@ public class Stage1Files {
             default->false;
         };Stage1Exception.require(permit,403,"FORBIDDEN");
     }
-    static String detect(byte[] b,boolean goods){
+    public static String detect(byte[] b,boolean goods){
         boolean png=b.length>=24&&Arrays.equals(Arrays.copyOf(b,8),new byte[]{(byte)137,80,78,71,13,10,26,10});
         boolean jpeg=b.length>=4&&(b[0]&255)==255&&(b[1]&255)==216&&(b[2]&255)==255;
         if(png||jpeg){try(var input=ImageIO.createImageInputStream(new ByteArrayInputStream(b))){var readers=ImageIO.getImageReaders(input);if(!readers.hasNext())throw new IOException();var reader=readers.next();try{reader.setInput(input);int w=reader.getWidth(0),h=reader.getHeight(0);if(w<=0||h<=0||(long)w*h>40_000_000)throw new IOException();if(reader.read(0)==null)throw new IOException();}finally{reader.dispose();}return png?"image/png":"image/jpeg";}catch(IOException|RuntimeException ex){throw Stage1Exception.field("file","IMAGE_INVALID");}}

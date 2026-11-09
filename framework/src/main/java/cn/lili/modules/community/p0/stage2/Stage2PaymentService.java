@@ -11,6 +11,8 @@ import static cn.lili.modules.community.p0.support.Stage1Json.*;
 
 @Service @ConditionalOnProperty(name="p0.stage2.enabled",havingValue="true")
 public class Stage2PaymentService {
+    static final String OUT_OF_SCOPE="CHANNEL_RESULT_OUT_OF_SCOPE";
+    private static final Set<String> SUPPORTED_RESULTS=Set.of("UNPAID","UNKNOWN","NOT_FOUND","EXPIRED_ABSENT","SUCCEEDED","CLOSED","PARTIAL");
     private final Stage1Db db;private final Stage2Transactions tx;private final Stage2TradeService trades;private final Stage2QuoteService quotes;private final Stage2Inventory inventory;
     private final PersistentPaymentMock channel;private final Stage2Settings settings;private final Clock clock;
     public Stage2PaymentService(Stage1Db db,Stage2Transactions tx,Stage2TradeService trades,Stage2QuoteService quotes,Stage2Inventory inventory,PersistentPaymentMock channel,Stage2Settings settings,@Qualifier("stage1Clock")Clock clock){this.db=db;this.tx=tx;this.trades=trades;this.quotes=quotes;this.inventory=inventory;this.channel=channel;this.settings=settings;this.clock=clock;}
@@ -21,6 +23,7 @@ public class Stage2PaymentService {
         var f=new Fields(body).only("operationId");String operation=Stage2Transactions.operation(f),member=tx.member();trades.row(trade,member);
         JsonObject request=tx.locked(member,trades.stores(trade),()->{
             var row=db.required("SELECT * FROM li_p0_trade_state WHERE trade_id=? AND member_id=? FOR UPDATE",trade,member);
+            Stage1Exception.require(!OUT_OF_SCOPE.equals(id(row,"protection")),409,"PAYMENT_RESULT_REQUIRES_REVIEW");
             var old=payment(trade);
             if(old!=null&&!Set.of("UNPAID","CONFIRMED_FAILED").contains(id(old,"status")))return null;
             Instant now=clock.instant(),deadline=instant(row.get("pay_deadline"));
@@ -54,7 +57,7 @@ public class Stage2PaymentService {
     }
     public Object refresh(String trade){String member=tx.member();trades.row(trade,member);recover(trade);return view(trade,member);}
     public Object cancel(String trade,Object body){new Fields(body).only("operationId");Stage2Transactions.operation(new Fields(body));String member=tx.member();trades.row(trade,member);
-        tx.locked(member,trades.stores(trade),()->{var row=historicalRow(trade);if(Set.of("PAID","CLOSED").contains(id(row,"status"))||"SUCCEEDED".equals(id(row,"payment_status")))return null;db.update("UPDATE li_p0_trade_state SET next_query_at=IF(close_status='NONE',?,next_query_at),close_status='REQUESTED',status='CLOSE_CONFIRMING',version=version+1 WHERE trade_id=?",clock.instant(),trade);tx.task("PAYMENT",trade);return null;});recover(trade);return view(trade,member);
+        tx.locked(member,trades.stores(trade),()->{var row=historicalRow(trade);Stage1Exception.require(!OUT_OF_SCOPE.equals(id(row,"protection")),409,"PAYMENT_RESULT_REQUIRES_REVIEW");if(Set.of("PAID","CLOSED").contains(id(row,"status"))||"SUCCEEDED".equals(id(row,"payment_status")))return null;db.update("UPDATE li_p0_trade_state SET next_query_at=IF(close_status='NONE',?,next_query_at),close_status='REQUESTED',status='CLOSE_CONFIRMING',version=version+1 WHERE trade_id=?",clock.instant(),trade);tx.task("PAYMENT",trade);return null;});recover(trade);return view(trade,member);
     }
     private Object view(String trade,String member){return map("trade",trades.summary(trade,member),"launchReady",Optional.ofNullable(payment(trade)).map(r->"UNPAID".equals(id(r,"status"))).orElse(false));}
     private void recheck(String trade,String member){
@@ -66,13 +69,13 @@ public class Stage2PaymentService {
     private JsonObject request(String trade,Map<String,Object> state){
         var suborders=new ArrayList<Object>();String platform=null,app=null;long total=0;
         for(var row:db.rows("SELECT * FROM li_p0_order_snapshot WHERE trade_id=? ORDER BY store_id",trade)){var snapshot=object(row.get("payload_json"));var relation=snapshot.getAsJsonObject("funds").getAsJsonObject("channel");String thisPlatform=relation.get("provider_mchid").getAsString(),thisApp=relation.get("payment_appid").getAsString();if(platform!=null)Stage1Exception.require(platform.equals(thisPlatform)&&app.equals(thisApp),409,"CHANNEL_SET_CONFLICT");platform=thisPlatform;app=thisApp;
-            long amount=number(row,"amount_cent");total=Stage2Money.add(total,amount);suborders.add(map("orderId",id(row,"order_id"),"storeId",id(row,"store_id"),"subNo","S2S"+id(row,"order_id"),"subMchid",relation.get("sub_mchid"),"amountCent",amount));}
+            long amount=number(row,"amount_cent");total=Stage2Money.add(total,amount);var child=map("orderId",id(row,"order_id"),"storeId",id(row,"store_id"),"subNo","S2S"+id(row,"order_id"),"subMchid",relation.get("sub_mchid"),"amountCent",amount);if(settings.isStage45ResourceMode())child.put("profitSharing",true);suborders.add(child);}
         Stage1Exception.require(total==number(state,"amount_cent"),409,"AMOUNT_INVARIANT");
         return object(map("mode","MOCK","combineNo","S2C"+trade,"tradeId",trade,"payerMemberId",member(state),"platformMerchantId",platform,"applicationId",app,"currency","CNY","amountCent",total,"subOrders",suborders,"expiresAt",instant(state.get("pay_deadline"))));
     }
     /** Trusted worker/notification path. Current shopping eligibility never erases historic payment facts. */
     public void recover(String trade){
-        var state=historicalRow(trade);String member=member(state);var stores=trades.stores(trade);var pay=payment(trade);
+        var state=historicalRow(trade);if(OUT_OF_SCOPE.equals(id(state,"protection")))return;String member=member(state);var stores=trades.stores(trade);var pay=payment(trade);
         if(pay!=null&&"SUCCEEDED".equals(id(pay,"status"))){settlePaid(trade);return;}
         if(pay!=null&&"CLOSED".equals(id(pay,"status"))){closeLocal(trade,true);return;}
         if(Set.of("PAID","CLOSED").contains(id(state,"status"))&&state.get("protection")==null)return;
@@ -100,7 +103,8 @@ public class Stage2PaymentService {
         String outcome=result.get("state").getAsString();
         boolean valid=tx.historical(member,stores,()->{
             var pay=payment(trade);Stage1Exception.require(pay!=null,409,"PAYMENT_RELATION_MISSING");
-            boolean matches="MOCK".equals(result.get("mode").getAsString())&&hash(result.get("request")).equals(id(pay,"request_hash"))&&Set.of("UNPAID","UNKNOWN","NOT_FOUND","EXPIRED_ABSENT","SUCCEEDED","CLOSED","PARTIAL").contains(outcome);
+            boolean bound="MOCK".equals(result.get("mode").getAsString())&&hash(result.get("request")).equals(id(pay,"request_hash"));
+            boolean matches=bound&&SUPPORTED_RESULTS.contains(outcome);
             if(matches&&"SUCCEEDED".equals(outcome)){
                 var paid=Stage2PaymentFacts.verifiedOrNull(result,object(pay.get("request_json")));
                 matches=paid!=null;
@@ -111,7 +115,14 @@ public class Stage2PaymentService {
             }
             String event=result.get("eventId").getAsString();Stage1Exception.require(event.length()<=100,422,"EVENT_ID_INVALID");
             var old=db.one("SELECT payload_hash FROM li_p0_payment_evidence WHERE event_id=?",event);if(old!=null)Stage1Exception.require(hash(result).equals(id(old,"payload_hash")),409,"EVENT_CONTENT_CONFLICT");else db.update("INSERT INTO li_p0_payment_evidence VALUES(?,?,?,?,?,?)",event,trade,hash(result),write(result),matches?"VERIFIED":"REJECTED",clock.instant());
-            if(!matches){db.update("UPDATE li_p0_trade_state SET protection=COALESCE(protection,'PAYMENT_EVIDENCE_MISMATCH') WHERE trade_id=?",trade);markUnknownLocked(trade,"PAYMENT_EVIDENCE_MISMATCH");return false;}
+            if(!matches){
+                if(bound&&!SUPPORTED_RESULTS.contains(outcome)){
+                    // A trusted but undefined channel result needs explicit later handling.
+                    // A cached earlier PAID fact is not evidence resolving this newer result.
+                    db.update("UPDATE li_p0_trade_state SET protection=IF(protection='LATE_PAYMENT_AFTER_RELEASE',protection,?) WHERE trade_id=?",OUT_OF_SCOPE,trade);tx.task("PAYMENT",trade);
+                }else db.update("UPDATE li_p0_trade_state SET protection=COALESCE(protection,'PAYMENT_EVIDENCE_MISMATCH') WHERE trade_id=?",trade);
+                markUnknownLocked(trade,"PAYMENT_EVIDENCE_MISMATCH");return false;
+            }
             if("SUCCEEDED".equals(outcome)){
                 db.update("UPDATE li_p0_payment SET result_json=IF(status='SUCCEEDED',result_json,?),status='SUCCEEDED',dispatch_status='CONFIRMED',version=version+1,updated_at=? WHERE trade_id=?",write(result),clock.instant(),trade);
                 db.update("UPDATE li_p0_trade_state SET payment_status='SUCCEEDED',status=IF(status='PAID','PAID','PAY_CONFIRMING'),verified_at=?,version=version+1 WHERE trade_id=?",clock.instant(),trade);tx.task("PAYMENT",trade);return true;
@@ -132,7 +143,7 @@ public class Stage2PaymentService {
         if(valid&&Set.of("CLOSED","EXPIRED_ABSENT").contains(outcome))closeLocal(trade,true);
     }
     private void settlePaid(String trade){var row=historicalRow(trade);String member=member(row);try{tx.historical(member,trades.stores(trade),()->{
-        var current=historicalRow(trade);if("PAID".equals(id(current,"status"))&&current.get("protection")==null)return null;
+        var current=historicalRow(trade);if(OUT_OF_SCOPE.equals(id(current,"protection")))return null;if("PAID".equals(id(current,"status"))&&current.get("protection")==null)return null;
         Stage1Exception.require("SUCCEEDED".equals(id(payment(trade),"status")),409,"PAYMENT_NOT_CONFIRMED");
         if(db.count("SELECT COUNT(*) FROM li_p0_inventory_hold WHERE trade_id=? AND status='RELEASED'",trade)>0){db.update("UPDATE li_p0_trade_state SET protection='LATE_PAYMENT_AFTER_RELEASE',status='PAY_CONFIRMING' WHERE trade_id=?",trade);return null;}
         var pay=payment(trade);var paid=Stage2PaymentFacts.require(object(pay.get("result_json")),object(pay.get("request_json")));
@@ -142,7 +153,7 @@ public class Stage2PaymentService {
         db.update("UPDATE li_p0_trade_state SET status='PAID',payment_status='SUCCEEDED',protection=NULL,verified_at=?,version=version+1 WHERE trade_id=?",clock.instant(),trade);return null;
     });}catch(RuntimeException pending){tx.historical(member,trades.stores(trade),()->{db.update("UPDATE li_p0_trade_state SET status='PAY_CONFIRMING',protection='LOCAL_SETTLEMENT_PENDING' WHERE trade_id=?",trade);tx.task("PAYMENT",trade);return null;});}}
     private void closeLocal(String trade,boolean channelProof){var row=historicalRow(trade);tx.historical(member(row),trades.stores(trade),()->{
-        var current=historicalRow(trade);var pay=payment(trade);if(pay!=null&&"SUCCEEDED".equals(id(pay,"status")))return null;
+        var current=historicalRow(trade);var pay=payment(trade);if(OUT_OF_SCOPE.equals(id(current,"protection")))return null;if(pay!=null&&"SUCCEEDED".equals(id(pay,"status")))return null;
         if("CLOSED".equals(id(current,"status")))return null;
         Stage1Exception.require(channelProof&&pay!=null&&"CLOSED".equals(id(pay,"status"))||pay==null&&db.count("SELECT COUNT(*) FROM li_p0_payment_operation WHERE trade_id=?",trade)==0,409,"CLOSE_PROOF_REQUIRED");
         inventory.settle(trade,false);db.update("UPDATE li_order SET order_status='CANCELLED' WHERE trade_sn=(SELECT sn FROM li_trade WHERE id=?)",trade);

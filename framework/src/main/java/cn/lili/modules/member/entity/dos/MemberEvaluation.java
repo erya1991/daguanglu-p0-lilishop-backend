@@ -30,6 +30,10 @@ import org.springframework.beans.BeanUtils;
 public class MemberEvaluation extends BaseEntity {
 
     private static final long serialVersionUID = 1L;
+    @Schema(description="P0单一商品星级；历史无星保持空")
+    private Integer star;
+    private String p0OrderItemId;
+    private Long p0Version;
 
     @Schema(description = "客户ID")
     private String memberId;

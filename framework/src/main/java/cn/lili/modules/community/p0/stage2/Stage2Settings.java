@@ -8,6 +8,8 @@ import java.util.Set;
 @ConfigurationProperties("p0.stage2")
 public class Stage2Settings {
     private boolean enabled;
+    private boolean stage3ResourceMode;
+    private boolean stage45ResourceMode;
     private String environment = "TEST";
     private String mode = "MOCK";
     private String runId;
@@ -16,6 +18,8 @@ public class Stage2Settings {
     private String fileRoot;
     private Set<String> managerRoleIds = Set.of();
     private boolean workersEnabled;
+    private String recoveryScopeFile;
+    private String recoveryScopeSha256;
     private String mockJdbcUrl;
     private String mockUsername;
     private String mockPassword;

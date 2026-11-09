@@ -23,9 +23,9 @@ public class PersistentPaymentMock implements CombinePaymentPort {
     public static final Set<String> SCENARIOS=Set.of("SUCCESS","FAILURE","UNKNOWN","LOST_NOTIFY","WRONG_AMOUNT","WRONG_MODE","WRONG_SUBS","PARTIAL","DELAYED_SUCCESS","CLOSE_UNKNOWN","LATE_SUCCESS");
     public PersistentPaymentMock(Stage2Settings settings,@Qualifier("stage1Clock")Clock clock){
         this.settings=settings;this.clock=clock;
-        Stage1Exception.require("TEST".equals(settings.getEnvironment())&&"MOCK".equals(settings.getMode())&&settings.getMockJdbcUrl()!=null&&settings.getMockJdbcUrl().startsWith("jdbc:mysql://127.0.0.1:19406/dgl_p0_s2_mock?")&&"s2_mock".equals(settings.getMockUsername()),503,"MOCK_RESOURCE_NOT_REGISTERED");
+        Stage1Exception.require("TEST".equals(settings.getEnvironment())&&"MOCK".equals(settings.getMode())&&settings.getMockJdbcUrl()!=null&&settings.getMockJdbcUrl().startsWith(settings.isStage45ResourceMode()?"jdbc:mysql://127.0.0.1:19606/dgl_p0_s45_mock?":settings.isStage3ResourceMode()?"jdbc:mysql://127.0.0.1:19506/dgl_p0_s3_mock?":"jdbc:mysql://127.0.0.1:19406/dgl_p0_s2_mock?")&&(settings.isStage45ResourceMode()?"s45_mock":settings.isStage3ResourceMode()?"s3_mock":"s2_mock").equals(settings.getMockUsername()),503,"MOCK_RESOURCE_NOT_REGISTERED");
         var source=new DriverManagerDataSource(settings.getMockJdbcUrl(),settings.getMockUsername(),settings.getMockPassword());jdbc=new JdbcTemplate(source);tx=new TransactionTemplate(new DataSourceTransactionManager(source));
-        var identity=jdbc.queryForMap("SELECT @@server_uuid uuid,DATABASE() db");Stage1Exception.require(settings.getMysqlUuid().equals(String.valueOf(identity.get("uuid")))&&"dgl_p0_s2_mock".equals(identity.get("db")),503,"MOCK_RESOURCE_NOT_REGISTERED");
+        var identity=jdbc.queryForMap("SELECT @@server_uuid uuid,DATABASE() db");Stage1Exception.require(settings.getMysqlUuid().equals(String.valueOf(identity.get("uuid")))&&(settings.isStage45ResourceMode()?"dgl_p0_s45_mock":settings.isStage3ResourceMode()?"dgl_p0_s3_mock":"dgl_p0_s2_mock").equals(identity.get("db")),503,"MOCK_RESOURCE_NOT_REGISTERED");
     }
     private JsonObject signed(JsonObject request,String state,String event){
         var result=object(map("eventId",event,"mode","MOCK","state",state,"request",request,"observedAt",clock.instant()));result.addProperty("signature",sign(result));return result;
@@ -37,10 +37,13 @@ public class PersistentPaymentMock implements CombinePaymentPort {
     private Map<String,Object> one(String combine){var rows=jdbc.queryForList("SELECT * FROM li_p0_mock_payment WHERE combine_no=? FOR UPDATE",combine);return rows.isEmpty()?null:rows.getFirst();}
     private int update(String sql,Object... args){return jdbc.update(sql,Arrays.stream(args).map(v->v instanceof Instant i?java.sql.Timestamp.from(i):v).toArray());}
     private void requireRequest(JsonObject request){
-        Stage1Exception.require("MOCK".equals(request.get("mode").getAsString())&&"CNY".equals(request.get("currency").getAsString()),422,"MOCK_REQUEST_INVALID");
+        var fields=new Fields(request);fields.choice("mode",Set.of("MOCK"),true);fields.choice("currency",Set.of("CNY"),true);
+        fields.text("combineNo",1,64,true);fields.id("tradeId",true);fields.id("payerMemberId",true);fields.text("platformMerchantId",1,64,true);fields.text("applicationId",1,128,true);
+        try{Instant.parse(fields.text("expiresAt",1,64,true));}catch(java.time.format.DateTimeParseException invalid){throw Stage1Exception.field("expiresAt","INSTANT_REQUIRED");}
+        long total=fields.integer("amountCent",1,Stage2Money.MAX_SAFE_CENT,true);
         var subs=request.getAsJsonArray("subOrders");Stage1Exception.require(!subs.isEmpty()&&subs.size()<=50,422,"MOCK_SUBORDER_LIMIT");long sum=0;var ids=new HashSet<String>();
-        for(var e:subs){var sub=e.getAsJsonObject();Stage1Exception.require(ids.add(sub.get("orderId").getAsString())&&sub.get("amountCent").getAsLong()>0,422,"MOCK_SUBORDER_INVALID");sum=Stage2Money.add(sum,sub.get("amountCent").getAsLong());}
-        Stage1Exception.require(sum==request.get("amountCent").getAsLong()&&sum>0,422,"MOCK_AMOUNT_INVALID");
+        for(var e:subs){var sub=new Fields(e);Stage1Exception.require(ids.add(sub.id("orderId",true)),422,"MOCK_SUBORDER_INVALID");sub.id("storeId",true);sub.text("subNo",1,64,true);sub.text("subMchid",1,64,true);sum=Stage2Money.add(sum,sub.integer("amountCent",1,Stage2Money.MAX_SAFE_CENT,true));}
+        Stage1Exception.require(sum==total,422,"MOCK_AMOUNT_INVALID");
     }
     @Override public JsonObject prepare(JsonObject request){
         requireRequest(request);String combine=request.get("combineNo").getAsString();Instant expires=Instant.parse(request.get("expiresAt").getAsString());
@@ -114,5 +117,10 @@ public class PersistentPaymentMock implements CombinePaymentPort {
             return map("combineNo",combine,"scenario",scenario,"mode","MOCK");});
     }
     public List<JsonObject> deliveries(){return jdbc.queryForList("SELECT payload_json FROM li_p0_mock_delivery WHERE status='PENDING' AND due_at<=? ORDER BY due_at,event_id LIMIT 100",java.sql.Timestamp.from(clock.instant())).stream().map(r->object(r.get("payload_json"))).toList();}
+    public List<JsonObject> deliveries(Collection<String> combines){
+        if(combines.isEmpty())return List.of();
+        var args=new ArrayList<Object>();args.add(java.sql.Timestamp.from(clock.instant()));args.addAll(combines);
+        return jdbc.queryForList("SELECT payload_json FROM li_p0_mock_delivery WHERE status='PENDING' AND due_at<=? AND combine_no IN ("+String.join(",",Collections.nCopies(combines.size(),"?"))+") ORDER BY due_at,event_id LIMIT 100",args.toArray()).stream().map(r->object(r.get("payload_json"))).toList();
+    }
     public void delivered(String event){update("UPDATE li_p0_mock_delivery SET status='DONE',attempts=attempts+1 WHERE event_id=?",event);}
 }

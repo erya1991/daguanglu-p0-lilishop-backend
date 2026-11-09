@@ -19,6 +19,23 @@ public class InventoryService {
     private cn.lili.modules.community.p0.stage2.Stage2Inventory stage2Inventory;
     private final Stage1Db db;private final Stage1Context context;private final Stage1Mutations mutations;private final NativeGoodsProjector nativeGoods;private final EligibilityService eligibility;private final Stage1Settings settings;private final StringRedisTemplate redis;private final Clock clock;
     public InventoryService(Stage1Db db,Stage1Context context,Stage1Mutations mutations,NativeGoodsProjector nativeGoods,EligibilityService eligibility,Stage1Settings settings,StringRedisTemplate redis,@Qualifier("stage1Clock") Clock clock){this.db=db;this.context=context;this.mutations=mutations;this.nativeGoods=nativeGoods;this.eligibility=eligibility;this.settings=settings;this.redis=redis;this.clock=clock;}
+    /** S2 batch adapter: the existing single-SKU path joins one outer transaction. */
+    public Object stockBatch(String goodsId,Object body){
+        Stage1Exception.require(settings.isStage2(),403,"STAGE2_ENTRANCE_DISABLED");
+        var actor=context.require(SessionDomain.STORE);var f=new Fields(body).only("requestId","reason","items");String reason=f.text("reason",1,200,true);
+        var selected=new TreeMap<String,Fields>(Comparator.comparingLong(Long::parseLong));
+        for(Object item:f.list("items",1,100,true)){var line=new Fields(item).only("skuId","expectedVersion","targetQuantity");String sku=line.id("skuId",true);line.version();line.integer("targetQuantity",0,9999999,true);Stage1Exception.require(selected.put(sku,line)==null,422,"DUPLICATE_SKU");}
+        return mutations.run("stock.batch:"+goodsId,body,actor.store(),()->{
+            db.required("SELECT id FROM li_goods WHERE id=? AND store_id=? AND delete_flag=0",goodsId,actor.store());
+            var result=new ArrayList<Object>();
+            for(var item:selected.entrySet()){
+                var row=sku(item.getKey(),actor.store());Stage1Exception.require(goodsId.equals(id(row,"goods_id")),404,"RESOURCE_NOT_FOUND");
+                String child=hash(map("batch",f.requestId(),"goods",goodsId,"sku",item.getKey()));
+                result.add(stock(item.getKey(),map("requestId",child,"expectedVersion",item.getValue().version(),"targetQuantity",item.getValue().integer("targetQuantity",0,9999999,true),"reason",reason)));
+            }
+            return map("goodsId",goodsId,"items",result);
+        });
+    }
     public Object stock(String id,Object body){
         var actor=context.require(SessionDomain.STORE);var f=new Fields(body).only("requestId","expectedVersion","targetQuantity","reason");long target=f.integer("targetQuantity",0,9999999,true);String reason=f.text("reason",1,200,true);
         return mutations.run("stock.set:"+id,body,actor.store(),()->{

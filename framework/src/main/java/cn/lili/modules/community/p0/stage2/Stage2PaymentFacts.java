@@ -26,9 +26,10 @@ public final class Stage2PaymentFacts {
     }
 
     /** The caller authenticates the envelope and checks the original request digest first. */
-    public static JsonObject require(JsonObject result, JsonObject request) {
+    public static JsonObject require(JsonObject result, JsonObject request) {return requireAuthenticated(result,request,"MOCK");}
+    public static JsonObject requireAuthenticated(JsonObject result,JsonObject request,String mode) {
         try {
-            if (!"MOCK".equals(text(result, "mode")) || !"SUCCEEDED".equals(text(result, "state"))
+            if (!Set.of("MOCK","REAL").contains(mode)||!mode.equals(text(result, "mode")) || !"SUCCEEDED".equals(text(result, "state"))
                 || !hash(request).equals(hash(result.get("request")))) throw invalid();
             var paid = result.getAsJsonObject("paid");
             if (!text(request, "combineNo").equals(text(paid, "combineNo"))

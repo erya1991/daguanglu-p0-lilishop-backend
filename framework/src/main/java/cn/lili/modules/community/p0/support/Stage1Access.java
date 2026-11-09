@@ -18,6 +18,10 @@ import static cn.lili.modules.community.p0.support.Stage1Json.*;
 @Component
 @cn.lili.modules.community.p0.support.P0BusinessEnabled
 public class Stage1Access implements SessionAccessExtension, MerchantLifecyclePolicy, MerchantOwnershipProof {
+    @org.springframework.beans.factory.annotation.Autowired(required=false)
+    private org.springframework.beans.factory.ObjectProvider<cn.lili.modules.community.p0.stage3.Stage3Authorization> stage3;
+    @org.springframework.beans.factory.annotation.Autowired(required=false)
+    private org.springframework.beans.factory.ObjectProvider<cn.lili.modules.community.p0.stage45.Stage45Authorization> stage45;
     private final Stage1Db db;
     private final Stage1Settings settings;
     private final MerchantGrantMapper merchantGrants;
@@ -45,6 +49,8 @@ public class Stage1Access implements SessionAccessExtension, MerchantLifecyclePo
         Set<String> roles=managerRoles(actor), permissions=new TreeSet<>();
         for(String role:roles) for(var row:db.rows("SELECT m.permission,rm.is_super FROM li_role_menu rm JOIN li_menu m ON m.id=rm.menu_id WHERE rm.role_id=? AND rm.delete_flag=0 AND m.delete_flag=0",role)) {
             String permission=id(row,"permission");
+            if(permission!=null&&permission.startsWith("s45.")&&stage45!=null&&stage45.getIfAvailable()!=null)continue;
+            if(permission!=null&&permission.startsWith("s3.")&&stage3!=null&&stage3.getIfAvailable()!=null)continue;
             deny(permission!=null&&permission.startsWith("s1.")&&row.get("is_super")!=null);
             String action=permission.substring(3);
             if(readAction(action)||flag(row,"is_super"))permissions.add(action);
@@ -70,6 +76,12 @@ public class Stage1Access implements SessionAccessExtension, MerchantLifecyclePo
     }
     private static boolean readAction(String action){return action.endsWith(".read")||action.equals("fulfillment.inspect");}
     @Override public boolean checkRoute(AuthUser user,String method,String path,boolean verified){
+        if(cn.lili.modules.community.p0.stage45.Stage45Routes.path(path)){
+            var service=stage45==null?null:stage45.getIfAvailable();deny(service!=null);return service.checkRoute(user,method,path,verified);
+        }
+        if(cn.lili.modules.community.p0.stage3.Stage3Routes.path(path)){
+            var service=stage3==null?null:stage3.getIfAvailable();deny(service!=null);return service.checkRoute(user,method,path,verified);
+        }
         if(cn.lili.modules.community.p0.stage2.Stage2Routes.path(path)) {
             deny(settings.isStage2() && verified && user!=null && user.getRole()==UserEnums.MEMBER
                     && cn.lili.modules.community.p0.stage2.Stage2Routes.find(SessionDomain.RESIDENT,method,path)!=null);

@@ -28,4 +28,14 @@ class Stage2RoutesTest {
         for (String property : new String[]{"p0.stage1.enabled=true","p0.stage2.enabled=true"})
             new ApplicationContextRunner().withPropertyValues(property).withUserConfiguration(Shared.class).run(c->assertEquals(1,c.getBeansOfType(Shared.class).size()));
     }
+    @Test void batchInventoryControllerIsAbsentFromStage1AndKeepsStockPermission() {
+        var runner=new ApplicationContextRunner().withBean(cn.lili.modules.community.p0.catalog.InventoryService.class,
+            ()->org.mockito.Mockito.mock(cn.lili.modules.community.p0.catalog.InventoryService.class))
+            .withUserConfiguration(Stage2StockController.class);
+        runner.withPropertyValues("p0.stage1.enabled=true").run(c->assertEquals(0,c.getBeansOfType(Stage2StockController.class).size()));
+        runner.withPropertyValues("p0.stage2.enabled=true").run(c->assertEquals(1,c.getBeansOfType(Stage2StockController.class).size()));
+        var route=cn.lili.modules.community.p0.support.Stage1Routes.find(SessionDomain.STORE,"PUT","/store/p0/s1/goods/123/stock");
+        assertNotNull(route);assertEquals("stock.write",route.action());
+        assertNull(cn.lili.modules.community.p0.support.Stage1Routes.find(SessionDomain.RESIDENT,"PUT","/store/p0/s1/goods/123/stock"));
+    }
 }

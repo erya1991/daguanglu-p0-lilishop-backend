@@ -25,6 +25,9 @@ import java.math.BigDecimal;
 @Component
 @Slf4j
 public class RefundSupport {
+    @org.springframework.beans.factory.annotation.Autowired(required=false)
+    private cn.lili.modules.community.p0.stage2.Stage2NativeBoundary stage45LegacyBoundary;
+
     /**
      * 店铺流水
      */
@@ -44,6 +47,7 @@ public class RefundSupport {
      * @param afterSale
      */
     public void refund(AfterSale afterSale) {
+        if(stage45LegacyBoundary!=null)stage45LegacyBoundary.rejectLegacyWrite();
         Order order = orderService.getBySn(afterSale.getOrderSn());
         BigDecimal channelRefund = giftCardCashService.resolveChannelRefundAfterGiftCardForAfterSale(afterSale);
         double channelRefundAmount = channelRefund.doubleValue();
@@ -79,6 +83,7 @@ public class RefundSupport {
      */
     public void notify(PaymentMethodEnum paymentMethodEnum,
                        HttpServletRequest request) {
+        if(stage45LegacyBoundary!=null)stage45LegacyBoundary.rejectLegacyWrite();
 
         //获取支付插件
         Payment payment = (Payment) SpringContextUtil.getBean(paymentMethodEnum.getPlugin());

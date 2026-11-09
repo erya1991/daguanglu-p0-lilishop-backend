@@ -57,7 +57,14 @@ public class SliderImageUtil {
         int sliderHeight = sliderImage.getHeight();
 
         //原图
-        BufferedImage originalImage = ImageIO.read(Base64DecodeMultipartFile.base64ToInputStream(originalFile.getBase64()));
+        BufferedImage decodedImage = ImageIO.read(Base64DecodeMultipartFile.base64ToInputStream(originalFile.getBase64()));
+        // JPEG requires an opaque RGB source; ARGB PNG assets otherwise produce an empty stream.
+        BufferedImage originalImage = new BufferedImage(decodedImage.getWidth(), decodedImage.getHeight(), BufferedImage.TYPE_INT_RGB);
+        Graphics2D opaque = originalImage.createGraphics();
+        opaque.setColor(Color.WHITE);
+        opaque.fillRect(0, 0, originalImage.getWidth(), originalImage.getHeight());
+        opaque.drawImage(decodedImage, 0, 0, null);
+        opaque.dispose();
         int originalWidth = originalImage.getWidth();
         int originalHeight = originalImage.getHeight();
 
@@ -65,7 +72,7 @@ public class SliderImageUtil {
         //X轴距离右端targetWidth Y轴距离底部targetHeight以上
         int randomX = random.nextInt(originalWidth - 3 * sliderWidth) + 2 * sliderWidth;
         int randomY = random.nextInt(originalHeight - sliderHeight);
-        log.info("原图大小{} x {},随机生成的坐标 X,Y 为（{}，{}）", originalWidth, originalHeight, randomX, randomY);
+        log.debug("验证码图像尺寸 {} x {}", originalWidth, originalHeight);
 
         //新建一个和模板一样大小的图像，TYPE_4BYTE_ABGR表示具有8位RGBA颜色分量的图像，正常取imageTemplate.getType()
         BufferedImage newImage = new BufferedImage(sliderWidth, sliderHeight, sliderImage.getType());
@@ -101,15 +108,15 @@ public class SliderImageUtil {
         //新建流
         ByteArrayOutputStream newImageOs = new ByteArrayOutputStream();
         //利用ImageIO类提供的write方法，将bi以png图片的数据模式写入流。
-        ImageIO.write(newImage, TEMP_IMG_FILE_TYPE, newImageOs);
+        if (!ImageIO.write(newImage, TEMP_IMG_FILE_TYPE, newImageOs)) throw new java.io.IOException("PNG writer unavailable");
         byte[] newImagery = newImageOs.toByteArray();
         //新建流
         ByteArrayOutputStream oriImagesOs = new ByteArrayOutputStream();
         //利用ImageIO类提供的write方法，将bi以jpg图片的数据模式写入流
-        ImageIO.write(originalImage, IMG_FILE_TYPE, oriImagesOs);
+        if (!ImageIO.write(originalImage, IMG_FILE_TYPE, oriImagesOs)) throw new java.io.IOException("JPEG writer unavailable");
         byte[] oriImageByte = oriImagesOs.toByteArray();
         pictureMap.put("slidingImage", "data:image/png;base64," + Base64.getEncoder().encodeToString(newImagery));
-        pictureMap.put("backImage", "data:image/png;base64," + Base64.getEncoder().encodeToString(oriImageByte));
+        pictureMap.put("backImage", "data:image/jpeg;base64," + Base64.getEncoder().encodeToString(oriImageByte));
 //       x轴
         pictureMap.put("randomX", randomX);
 //       y轴

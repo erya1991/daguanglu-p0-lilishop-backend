@@ -18,7 +18,7 @@ final class Stage1ReceiptPolicy {
         else if(domain==SessionDomain.STORE)allowed=switch(command){
             case "profile.update","profile-change.submit","qualification.draft","qualification.submit"->grants.contains("profile.read");
             case "goods.save","goods.submit","goods.list","goods.unlist"->grants.contains("goods.read");
-            case "stock.set"->grants.contains("stock.read");
+            case "stock.set","stock.batch"->grants.contains("stock.read");
             case "cost.set"->grants.contains("cost.read");
             case "fulfillment.save"->grants.contains("fulfillment.read");
             case "point.save","point.enable","point.disable"->grants.contains("point.read");

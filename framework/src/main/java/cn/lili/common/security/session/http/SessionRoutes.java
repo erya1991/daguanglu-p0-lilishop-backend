@@ -29,7 +29,7 @@ public final class SessionRoutes {
 
     public static boolean requiresAuthentication(HttpServletRequest request) {
         String path = request.getRequestURI();
-        return cn.lili.modules.community.p0.stage2.Stage2Routes.path(path) || cn.lili.modules.community.p0.support.Stage1Routes.path(path) || managerManagementPath(path) || residentWritePath(path) || path.equals("/buyer/passport/member") || path.equals("/manager/passport/user/info")
+        return cn.lili.modules.community.p0.stage45.Stage45Routes.path(path) || cn.lili.modules.community.p0.stage3.Stage3Routes.path(path) || cn.lili.modules.community.p0.stage2.Stage2Routes.path(path) || cn.lili.modules.community.p0.support.Stage1Routes.path(path) || managerManagementPath(path) || residentWritePath(path) || path.equals("/buyer/passport/member") || path.equals("/manager/passport/user/info")
                 || path.equals("/manager/permission/menu/memberMenu")
                 || path.equals("/store/member/user") || path.equals("/store/member/user/info")
                 || path.equals(logout(SessionDomain.RESIDENT)) || path.equals(logout(SessionDomain.STORE))
@@ -77,6 +77,8 @@ public final class SessionRoutes {
     }
 
     public static boolean allowed(SessionDomain domain, String method, String path) {
+        if(cn.lili.modules.community.p0.stage45.Stage45Routes.path(path)) return cn.lili.modules.community.p0.stage45.Stage45Routes.find(domain,method,path)!=null;
+        if(cn.lili.modules.community.p0.stage3.Stage3Routes.path(path)) return cn.lili.modules.community.p0.stage3.Stage3Routes.find(domain,method,path)!=null;
         if(cn.lili.modules.community.p0.stage2.Stage2Routes.path(path)) return cn.lili.modules.community.p0.stage2.Stage2Routes.find(domain,method,path)!=null;
         if(cn.lili.modules.community.p0.support.Stage1Routes.path(path))
             return cn.lili.modules.community.p0.support.Stage1Routes.find(domain,method,path)!=null;

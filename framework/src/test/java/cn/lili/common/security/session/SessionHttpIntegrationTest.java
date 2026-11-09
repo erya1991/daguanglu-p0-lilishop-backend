@@ -52,6 +52,43 @@ class SessionHttpIntegrationTest {
         RequestContextHolder.resetRequestAttributes();
     }
 
+    @Test void managerStoreFilterIsAnObjectFilterOnlyOnFiniteStage3ReadRoutes() throws Exception {
+        var f=new Fixture();var pair=f.issue(SessionDomain.MANAGER);
+        for(String route:List.of("/manager/p0/s3/trades","/manager/p0/s3/verifications")) {
+            var grant=new UserMenuVO();grant.setPermission(route);grant.setIsSuper(false);
+            when(f.menus.findAllMenu("synthetic-actor")).thenReturn(List.of(grant));
+            var result=f.run(SessionDomain.MANAGER,"GET",route,pair.accessToken(),null,Map.of("storeId","9007199254740993"));
+            assertEquals(200,result.response.getStatus());assertEquals(1,result.calls);
+            var other=f.run(SessionDomain.MANAGER,"GET",route,pair.accessToken(),null,Map.of("memberId","foreign"));
+            assertEquals(403,other.response.getStatus());assertEquals(0,other.calls);
+        }
+        var unrelated=f.run(SessionDomain.MANAGER,"GET","/manager/passport/user/info",pair.accessToken(),null,Map.of("storeId","foreign"));
+        assertEquals(403,unrelated.response.getStatus());assertEquals(0,unrelated.calls);
+        var resident=f.issue(SessionDomain.RESIDENT);var denied=f.run(SessionDomain.RESIDENT,"GET","/buyer/p0/s3/orders",resident.accessToken(),null,Map.of("storeId","foreign"));
+        assertEquals(403,denied.response.getStatus());assertEquals(0,denied.calls);
+    }
+
+    @Test void stage3PrivateRouteRequiresCurrentSessionAndCannotFallBackToLegacy() throws Exception {
+        var f=new Fixture(); var token=f.issue(SessionDomain.RESIDENT);
+        String route="/buyer/p0/s3/orders/9007199254740993";
+        assertTrue(SessionRoutes.requiresAuthentication(new MockHttpServletRequest("GET",route)));
+        var valid=f.run(SessionDomain.RESIDENT,"GET",route,token.accessToken(),null,Map.of());
+        assertEquals(200,valid.response.getStatus()); assertEquals(1,valid.calls);
+        for(String credential:List.of("legacy-jwt","")) {
+            var denied=f.run(SessionDomain.RESIDENT,"GET",route,credential,null,Map.of());
+            assertEquals(403,denied.response.getStatus()); assertEquals(0,denied.calls);
+        }
+        var wrongDomain=f.run(SessionDomain.STORE,"GET",route,token.accessToken(),null,Map.of());
+        assertEquals(403,wrongDomain.response.getStatus()); assertEquals(0,wrongDomain.calls);
+        var wrongMethod=f.run(SessionDomain.RESIDENT,"POST",route,token.accessToken(),"{}",Map.of());
+        assertEquals(403,wrongMethod.response.getStatus()); assertEquals(0,wrongMethod.calls);
+        var selector=f.run(SessionDomain.RESIDENT,"GET",route,token.accessToken(),null,Map.of("memberId","foreign"));
+        assertEquals(403,selector.response.getStatus()); assertEquals(0,selector.calls);
+        f.sessions.revoke(f.sessions.verifyAccess(token.accessToken(),SessionDomain.RESIDENT,f.apps.application(SessionDomain.RESIDENT)));
+        var revoked=f.run(SessionDomain.RESIDENT,"GET",route,token.accessToken(),null,Map.of());
+        assertEquals(403,revoked.response.getStatus()); assertEquals(0,revoked.calls);
+    }
+
     @ParameterizedTest @EnumSource(SessionDomain.class)
     void fourDomainMatrixRejectsTwelveCrossDomainCombinations(SessionDomain source) throws Exception {
         var f = new Fixture();

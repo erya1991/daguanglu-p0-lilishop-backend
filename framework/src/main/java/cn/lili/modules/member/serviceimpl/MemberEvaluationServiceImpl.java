@@ -57,6 +57,9 @@ import java.util.Map;
  */
 @Service
 public class MemberEvaluationServiceImpl extends ServiceImpl<MemberEvaluationMapper, MemberEvaluation> implements MemberEvaluationService {
+    @org.springframework.beans.factory.annotation.Autowired(required=false)
+    private cn.lili.modules.community.p0.stage2.Stage2NativeBoundary stage45LegacyBoundary;
+
 
     /**
      * 订单
@@ -102,6 +105,7 @@ public class MemberEvaluationServiceImpl extends ServiceImpl<MemberEvaluationMap
     @Override
     @Transactional(rollbackFor = Exception.class)
     public MemberEvaluationDTO addMemberEvaluation(MemberEvaluationDTO memberEvaluationDTO, Boolean isSelf) {
+        if(stage45LegacyBoundary!=null)stage45LegacyBoundary.rejectLegacyWrite();
         //获取子订单信息
         OrderItem orderItem = orderItemService.getBySn(memberEvaluationDTO.getOrderItemSn());
 
@@ -161,6 +165,7 @@ public class MemberEvaluationServiceImpl extends ServiceImpl<MemberEvaluationMap
 
     @Override
     public boolean updateStatus(String id, String status) {
+        if(stage45LegacyBoundary!=null)stage45LegacyBoundary.rejectLegacyWrite();
         UpdateWrapper updateWrapper = Wrappers.update();
         updateWrapper.eq("id", id);
         updateWrapper.set("status", status.equals(SwitchEnum.OPEN.name()) ? SwitchEnum.OPEN.name() : SwitchEnum.CLOSE.name());
@@ -170,6 +175,7 @@ public class MemberEvaluationServiceImpl extends ServiceImpl<MemberEvaluationMap
     @Override
     @Transactional(rollbackFor = Exception.class)
     public boolean updateTop(String id, Boolean top) {
+        if(stage45LegacyBoundary!=null)stage45LegacyBoundary.rejectLegacyWrite();
         // 取消置顶时，只更新当前评论。
         if (!Boolean.TRUE.equals(top)) {
             LambdaUpdateWrapper<MemberEvaluation> updateWrapper = Wrappers.lambdaUpdate();
@@ -200,6 +206,7 @@ public class MemberEvaluationServiceImpl extends ServiceImpl<MemberEvaluationMap
 
     @Override
     public boolean delete(String id) {
+        if(stage45LegacyBoundary!=null)stage45LegacyBoundary.rejectLegacyWrite();
         LambdaUpdateWrapper<MemberEvaluation> updateWrapper = Wrappers.lambdaUpdate();
         updateWrapper.set(MemberEvaluation::getDeleteFlag, true);
         updateWrapper.eq(MemberEvaluation::getId, id);
@@ -208,6 +215,7 @@ public class MemberEvaluationServiceImpl extends ServiceImpl<MemberEvaluationMap
 
     @Override
     public boolean reply(String id, String reply, String replyImage) {
+        if(stage45LegacyBoundary!=null)stage45LegacyBoundary.rejectLegacyWrite();
         UpdateWrapper<MemberEvaluation> updateWrapper = Wrappers.update();
         updateWrapper.set("reply_status", true);
         updateWrapper.set("reply", reply);

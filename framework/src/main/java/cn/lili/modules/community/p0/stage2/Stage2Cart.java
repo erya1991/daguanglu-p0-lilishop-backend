@@ -30,7 +30,9 @@ public class Stage2Cart {
     public Object add(Object body){
         var f=new Fields(body).only("operationId","skuId","quantity");String skuId=f.id("skuId",true);long quantity=f.integer("quantity",1,99,true);var candidate=sku(skuId);String member=tx.member(),store=id(candidate,"store_id");
         return tx.command("cart.add",body,List.of(store),()->{
-            var current=sku(skuId);var old=db.one("SELECT * FROM li_p0_cart_item WHERE member_id=? AND sku_id=? FOR UPDATE",member,skuId);
+            // Every Cart writer holds the Member mutex, including consumption and cleanup.
+            // An absent child FOR UPDATE would couple independent Members through a gap lock.
+            var current=sku(skuId);var old=db.one("SELECT * FROM li_p0_cart_item WHERE member_id=? AND sku_id=?",member,skuId);
             long amount=quantity+(old==null||flag(old,"deleted")?0:number(old,"quantity"));Stage1Exception.require(amount<=99,422,"SKU_QUANTITY_LIMIT");purchasable(current,amount);
             if(old==null||flag(old,"deleted")||number(old,"quantity")==0)Stage1Exception.require(db.count("SELECT COUNT(*) FROM li_p0_cart_item WHERE member_id=? AND deleted=0 AND quantity>0",member)<200,409,"CART_CAPACITY");
             if(old==null)db.update("INSERT INTO li_p0_cart_item VALUES(?,?,?,?,?,0,0,?,?)",db.id(),member,store,skuId,amount,clock.instant(),clock.instant());

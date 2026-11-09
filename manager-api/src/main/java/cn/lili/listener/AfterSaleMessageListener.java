@@ -19,6 +19,7 @@ import java.util.List;
 @Slf4j
 @Component
 public class AfterSaleMessageListener {
+    @Autowired(required=false) private cn.lili.modules.community.p0.stage2.Stage2NativeBoundary stage45LegacyBoundary;
 
     /**
      * 售后订单状态
@@ -27,6 +28,7 @@ public class AfterSaleMessageListener {
     private List<AfterSaleStatusChangeEvent> afterSaleStatusChangeEvents;
 
     public void onMessage(QueueMessage messageExt) {
+        if(stage45LegacyBoundary!=null)return;
         if (AfterSaleTagsEnum.valueOf(messageExt.getTags()) == AfterSaleTagsEnum.AFTER_SALE_STATUS_CHANGE) {
             for (AfterSaleStatusChangeEvent afterSaleStatusChangeEvent : afterSaleStatusChangeEvents) {
                 try {

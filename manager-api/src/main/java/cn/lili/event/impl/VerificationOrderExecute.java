@@ -25,12 +25,15 @@ import org.springframework.stereotype.Component;
 @Component
 public class VerificationOrderExecute implements OrderStatusChangeEvent {
 
+    @Autowired(required=false)
+    private cn.lili.modules.community.p0.stage2.Stage2NativeBoundary stage2Boundary;
     @Autowired
     private OrderService orderService;
     @Autowired
     private OrderItemService orderItemService;
     @Override
     public void orderChange(OrderMessage orderMessage) {
+        if(stage2Boundary!=null)return;
         //订单状态为待核验，添加订单添加核验码
         if (orderMessage.getNewStatus().equals(OrderStatusEnum.TAKE) || orderMessage.getNewStatus().equals(OrderStatusEnum.STAY_PICKED_UP)) {
             //获取订单信息

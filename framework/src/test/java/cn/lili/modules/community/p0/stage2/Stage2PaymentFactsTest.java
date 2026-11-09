@@ -25,7 +25,7 @@ class Stage2PaymentFactsTest {
         assertEquals(PAID_AT.toString(), paid.get("paidAt").getAsString());
         assertEquals("9007199254740993", paid.getAsJsonArray("subOrders").get(0).getAsJsonObject().get("orderId").getAsString());
         assertNotEquals(result.get("observedAt"), paid.get("paidAt"));
-        var reordered = paid.getAsJsonArray("subOrders"); var first = reordered.remove(0); reordered.add(first);
+        var reordered = result.getAsJsonObject("paid").getAsJsonArray("subOrders"); var first = reordered.remove(0); reordered.add(first);
         assertDoesNotThrow(() -> Stage2PaymentFacts.require(result, request));
     }
     @Test void missingOrMismatchedPaidEvidenceNeverBecomesCompleteByRequestEcho() {

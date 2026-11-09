@@ -78,6 +78,7 @@ public final class SessionHttpFilter extends OncePerRequestFilter {
             if (!SessionProtocol.isStage0(token)) {
                 require(!cn.lili.modules.community.p0.support.Stage1Routes.path(path));
                 require(!cn.lili.modules.community.p0.stage2.Stage2Routes.path(path));
+                require(!(cn.lili.modules.community.p0.stage45.Stage45Routes.path(path)||cn.lili.modules.community.p0.stage3.Stage3Routes.path(path)));
                 require(!SessionRoutes.residentWritePath(path)); // No anonymous/legacy JWT downgrade into R02 writes.
                 require(!SessionRoutes.merchantIdentityPath(path)); // P05 identity reads require a current mapped Session.
                 require(domain != SessionDomain.APPLICANT); // No legacy Applicant fallback.
@@ -91,7 +92,9 @@ public final class SessionHttpFilter extends OncePerRequestFilter {
             if (!SessionRoutes.allowed(domain, method, path)) throw new SessionException(DENIED);
             // These endpoints never select a different identity from request fields.
             for (String selector : List.of("memberId", "userId", "applicantId", "storeId", "clerkId", "role", "isSuper", "appId")) {
-                require(request.getParameter(selector) == null);
+                boolean storeFilter=selector.equals("storeId")&&domain==SessionDomain.MANAGER&&method.equals("GET")
+                        &&List.of("/manager/p0/s3/trades","/manager/p0/s3/verifications").contains(path);
+                require(storeFilter || request.getParameter(selector) == null);
                 // P05 rejects merchant selectors here; retain the existing Resident/Manager error contracts.
                 if (domain == SessionDomain.APPLICANT || domain == SessionDomain.STORE || domain == SessionDomain.MANAGER) {
                     require(request.getHeader(selector) == null);

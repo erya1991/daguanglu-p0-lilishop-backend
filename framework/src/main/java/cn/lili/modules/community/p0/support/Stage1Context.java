@@ -41,6 +41,8 @@ public class Stage1Context {
     public Actor require(SessionDomain domain){var actor=current();if(actor.domain()!=domain)throw new Stage1Exception(403,"DOMAIN_MISMATCH");return actor;}
     public Object receipt(String action,Object result){
         var actor=current();
+        // A Stage45 query uses the native durable queue receipt without granting native onboarding.
+        if(actor.domain()==SessionDomain.MANAGER&&actor.method().equals("POST")&&actor.path().matches("/manager/p0/s45/channels/[1-9][0-9]{0,18}/sync")&&action.startsWith("submerchant.query:"))return Stage1Json.object(result).deepCopy();
         var grants=actor.domain()==SessionDomain.MANAGER?access.managerPermissions(actor.id()):actor.domain()==SessionDomain.STORE?access.storePermissions(actor.user()):java.util.Set.<String>of();
         return Stage1ReceiptPolicy.view(actor.domain(),grants,action,result);
     }

@@ -15,6 +15,10 @@ public class Stage2ResourceGuard implements SmartInitializingSingleton {
     public Stage2ResourceGuard(Stage1Db db, Stage2Settings settings, Environment env) { this.db=db; this.settings=settings; this.env=env; }
     @Override public void afterSingletonsInstantiated() {
         try {
+            if(settings.isStage45ResourceMode()){cn.lili.modules.community.p0.stage45.Stage45ResourceScope.verify(db,settings,env);return;}
+            if(env.getProperty("p0.stage45.enabled",Boolean.class,false))throw new IllegalStateException();
+            if(settings.isStage3ResourceMode()){cn.lili.modules.community.p0.stage3.Stage3ResourceScope.verify(db,settings,env);return;}
+            if(env.getProperty("p0.stage3.enabled",Boolean.class,false))throw new IllegalStateException();
             if (env.getProperty("p0.stage1.enabled", Boolean.class, false) || !"TEST".equals(settings.getEnvironment()) || !"MOCK".equals(settings.getMode())) throw new IllegalStateException();
             var identity = db.required("SELECT @@server_uuid AS uuid,DATABASE() AS database_name,CURRENT_USER() AS account");
             if (settings.getMysqlUuid() == null || !settings.getMysqlUuid().equals(id(identity,"uuid")) || !"dgl_p0_s2".equals(id(identity,"database_name")) || !id(identity,"account").startsWith("s2_app@")) throw new IllegalStateException();

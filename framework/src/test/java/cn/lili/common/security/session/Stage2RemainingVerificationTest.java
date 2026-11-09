@@ -39,6 +39,24 @@ class Stage2RemainingVerificationTest {
         initialized=true;Stage2PersistenceTest.initialize();
     }
     @BeforeEach void before(){simulation.offset=0;mvc=transactionMvc;}
+    @Test void quoteExpiryMatchesPublicPrecisionAndRejectsExactDeadline()throws Exception {
+        var p=purchase(1);
+        var quotes=(Stage2QuoteService)ReflectionTestUtils.getField(s2trades,"quotes");
+        Object quoteClock=ReflectionTestUtils.getField(quotes,"clock"),tradeClock=ReflectionTestUtils.getField(s2trades,"clock");
+        try{
+            Instant start=Instant.now().plusSeconds(2).truncatedTo(java.time.temporal.ChronoUnit.SECONDS).plusNanos(123456789);
+            ReflectionTestUtils.setField(quotes,"clock",Clock.fixed(start,ZoneOffset.UTC));
+            var q=quote(p.resident(),p.owner().store(),p.sku(),1,p.address());
+            var stored=db.required("SELECT created_at,expires_at FROM li_p0_quote WHERE id=?",q.get("quoteId").getAsString());
+            Instant publicExpiry=Instant.parse(q.get("expiresAt").getAsString());
+            assertEquals(instant(stored.get("created_at")),Instant.parse(q.get("generatedAt").getAsString()));
+            assertEquals(instant(stored.get("expires_at")),publicExpiry);
+            ReflectionTestUtils.setField(s2trades,"clock",Clock.fixed(publicExpiry,ZoneOffset.UTC));
+            var result=request(transactionMvc,post(Stage2Routes.BASE+"/checkout/intents"),p.resident().session(),map("intentId","intent_"+req(),"quoteId",q.get("quoteId").getAsString(),"confirmationHash",q.get("confirmationHash").getAsString()),200);
+            assertEquals("FAILED",result.get("status").getAsString());assertEquals("QUOTE_EXPIRED",result.get("reasonCode").getAsString());
+            assertEquals(0,s2inventory.held(p.sku()));assertEquals(0,db.count("SELECT COUNT(*) FROM li_p0_trade_state WHERE member_id=?",p.resident().memberId()));
+        }finally{ReflectionTestUtils.setField(quotes,"clock",quoteClock);ReflectionTestUtils.setField(s2trades,"clock",tradeClock);}
+    }
     @AfterAll static void close() throws Exception {if(initialized)Stage2PersistenceTest.closeS2();}
     static JsonObject request(MockMvc endpoint,MockHttpServletRequestBuilder builder,SessionTokens token,Object body,int expected)throws Exception{
         if(token!=null)builder.header("accessToken",token.accessToken());
@@ -192,9 +210,9 @@ class Stage2RemainingVerificationTest {
         var b=new Stage2RecoveryWorker(s2tx,scoped,s2Settings,s2trades,delayed,paymentMock,redis,manager,simulation);
         var executor=Executors.newFixedThreadPool(2);
         try{
-            var first=executor.submit(a::one);await(firstEntered);
+            var first=executor.submit(a::one);try{await(firstEntered);}catch(AssertionError barrier){if(first.isDone())first.get();throw barrier;}
             var old=db.required("SELECT * FROM li_p0_s2_task WHERE task_type='PAYMENT' AND target_key=?",trade);assertEquals("RUNNING",id(old,"status"));
-            simulation.advance(31);var second=executor.submit(b::one);await(secondEntered);
+            simulation.advance(31);var second=executor.submit(b::one);try{await(secondEntered);}catch(AssertionError barrier){if(second.isDone())second.get();throw barrier;}
             var newer=db.required("SELECT * FROM li_p0_s2_task WHERE task_type='PAYMENT' AND target_key=?",trade);assertNotEquals(id(old,"lease_owner"),id(newer,"lease_owner"));
             firstGo.countDown();assertTrue(first.get(30,TimeUnit.SECONDS));
             var fenced=db.required("SELECT * FROM li_p0_s2_task WHERE task_type='PAYMENT' AND target_key=?",trade);assertEquals("RUNNING",id(fenced,"status"));assertEquals(id(newer,"lease_owner"),id(fenced,"lease_owner"));assertTrue(number(fenced,"generation")>number(newer,"generation"));

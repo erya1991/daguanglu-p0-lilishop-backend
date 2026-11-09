@@ -66,6 +66,9 @@ import java.util.stream.Collectors;
  */
 @Service
 public class AfterSaleServiceImpl extends ServiceImpl<AfterSaleMapper, AfterSale> implements AfterSaleService {
+    @org.springframework.beans.factory.annotation.Autowired(required=false)
+    private cn.lili.modules.community.p0.stage2.Stage2NativeBoundary stage45LegacyBoundary;
+
 
     /**
      * 订单
@@ -245,6 +248,7 @@ public class AfterSaleServiceImpl extends ServiceImpl<AfterSaleMapper, AfterSale
     @SystemLogPoint(description = "售后-售后申请", customerLog = "'售后申请:售后编号['+#rvt.sn+']'")
     @Transactional(rollbackFor = Exception.class)
     public AfterSale saveAfterSale(AfterSaleDTO afterSaleDTO) {
+        if(stage45LegacyBoundary!=null)stage45LegacyBoundary.rejectLegacyWrite();
 
         //检查当前订单是否可申请售后
         this.checkAfterSaleType(afterSaleDTO);
@@ -258,6 +262,7 @@ public class AfterSaleServiceImpl extends ServiceImpl<AfterSaleMapper, AfterSale
     @Transactional(rollbackFor = Exception.class)
     @Override
     public AfterSale review(String afterSaleSn, String serviceStatus, String remark, Double actualRefundPrice) {
+        if(stage45LegacyBoundary!=null)stage45LegacyBoundary.rejectLegacyWrite();
         //根据售后单号获取售后单
         AfterSale afterSale = OperationalJudgment.judgment(this.getBySn(afterSaleSn));
 
@@ -310,6 +315,7 @@ public class AfterSaleServiceImpl extends ServiceImpl<AfterSaleMapper, AfterSale
     @SystemLogPoint(description = "售后-买家退货,物流填写", customerLog = "'买家退货,物流填写:单号['+#afterSaleSn+']，物流单号为['+#logisticsNo+']'")
     @Override
     public AfterSale buyerDelivery(String afterSaleSn, String logisticsNo, String logisticsId, Date mDeliverTime) {
+        if(stage45LegacyBoundary!=null)stage45LegacyBoundary.rejectLegacyWrite();
 
         //根据售后单号获取售后单
         AfterSale afterSale = OperationalJudgment.judgment(this.getBySn(afterSaleSn));
@@ -355,6 +361,7 @@ public class AfterSaleServiceImpl extends ServiceImpl<AfterSaleMapper, AfterSale
             "'售后-商家收货:单号['+#afterSaleSn+'],处理结果[商家收货]':'售后-商家收货:单号['+#afterSaleSn+'],处理结果[商家拒收],原因['+#remark+']'")
     @Transactional(rollbackFor = Exception.class)
     public AfterSale storeConfirm(String afterSaleSn, String serviceStatus, String remark) {
+        if(stage45LegacyBoundary!=null)stage45LegacyBoundary.rejectLegacyWrite();
         //根据售后单号获取售后单
         AfterSale afterSale = OperationalJudgment.judgment(this.getBySn(afterSaleSn));
 
@@ -394,6 +401,7 @@ public class AfterSaleServiceImpl extends ServiceImpl<AfterSaleMapper, AfterSale
     @SystemLogPoint(description = "售后-平台退款", customerLog = "'售后-平台退款:单号['+#afterSaleSn+']，备注为['+#remark+']'")
     @Transactional(rollbackFor = Exception.class)
     public AfterSale refund(String afterSaleSn, String remark) {
+        if(stage45LegacyBoundary!=null)stage45LegacyBoundary.rejectLegacyWrite();
         //根据售后单号获取售后单
         AfterSale afterSale = OperationalJudgment.judgment(this.getBySn(afterSaleSn));
         afterSale.setServiceStatus(AfterSaleStatusEnum.COMPLETE.name());
@@ -411,6 +419,7 @@ public class AfterSaleServiceImpl extends ServiceImpl<AfterSaleMapper, AfterSale
     @AfterSaleLogPoint(sn = "#afterSaleSn", description = "'售后-买家确认解决:单号['+#afterSaleSn+']'")
     @SystemLogPoint(description = "售后-买家确认解决", customerLog = "'售后-买家确认解决:单号['+#afterSaleSn+']'")
     public AfterSale complete(String afterSaleSn) {
+        if(stage45LegacyBoundary!=null)stage45LegacyBoundary.rejectLegacyWrite();
         AfterSale afterSale = this.getBySn(afterSaleSn);
         afterSale.setServiceStatus(AfterSaleStatusEnum.COMPLETE.name());
         this.updateAfterSale(afterSaleSn, afterSale);
@@ -422,6 +431,7 @@ public class AfterSaleServiceImpl extends ServiceImpl<AfterSaleMapper, AfterSale
     @SystemLogPoint(description = "售后-取消售后", customerLog = "'售后-买家取消:单号['+#afterSaleSn+']'")
     @Transactional(rollbackFor = Exception.class)
     public AfterSale cancel(String afterSaleSn) {
+        if(stage45LegacyBoundary!=null)stage45LegacyBoundary.rejectLegacyWrite();
 
         //根据售后单号获取售后单
         AfterSale afterSale = OperationalJudgment.judgment(this.getBySn(afterSaleSn));

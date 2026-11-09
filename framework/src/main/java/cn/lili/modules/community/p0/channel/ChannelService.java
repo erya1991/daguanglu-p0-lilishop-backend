@@ -17,6 +17,7 @@ import static cn.lili.modules.community.p0.support.Stage1Json.*;
 @Service
 @cn.lili.modules.community.p0.support.P0BusinessEnabled
 public class ChannelService {
+    @org.springframework.beans.factory.annotation.Autowired(required=false) private org.springframework.beans.factory.ObjectProvider<cn.lili.modules.community.p0.stage45.Stage45Authorization> stage45;
     private final Stage1Db db;private final Stage1Context context;private final Stage1Access access;private final Stage1Mutations mutations;private final ChannelConfigService configs;private final ChannelMaterials materials;private final ChannelVault vault;private final Stage1Files files;private final Stage1Settings settings;private final TransactionTemplate tx;private final Clock clock;
     public ChannelService(Stage1Db db,Stage1Context context,Stage1Access access,Stage1Mutations mutations,ChannelConfigService configs,ChannelMaterials materials,ChannelVault vault,Stage1Files files,Stage1Settings settings,PlatformTransactionManager manager,@Qualifier("stage1Clock") Clock clock){this.db=db;this.context=context;this.access=access;this.mutations=mutations;this.configs=configs;this.materials=materials;this.vault=vault;this.files=files;this.settings=settings;this.tx=new TransactionTemplate(manager);this.clock=clock;}
     public Object create(Object body){
@@ -71,7 +72,7 @@ public class ChannelService {
         var claimed=tx.execute(status->{
             db.required("SELECT id FROM li_p0_consistency_guard WHERE id=1 FOR SHARE");var op=db.required("SELECT * FROM li_p0_channel_operation WHERE id=?",operation);db.one("SELECT id FROM li_admin_user WHERE id=? FOR UPDATE",op.get("actor_id"));String store=id(raw(id(op,"object_id")),"store_id");db.required("SELECT id FROM li_store WHERE id=? FOR UPDATE",store);
             if(!"QUEUED".equals(id(op,"status")))return null;
-            if(!permitted(id(op,"actor_id"))){db.update("UPDATE li_p0_channel_operation SET status='FAILED',failure_code='AUTHORIZATION_REVOKED',completed_at=? WHERE id=?",clock.instant(),operation);return null;}
+            if(!permitted(op)){db.update("UPDATE li_p0_channel_operation SET status='FAILED',failure_code='AUTHORIZATION_REVOKED',completed_at=? WHERE id=?",clock.instant(),operation);return null;}
             var relation=raw(id(op,"object_id"));var config=configs.raw(id(relation,"config_id"));if(!current(op,relation,config)){db.update("UPDATE li_p0_channel_operation SET status='STALE',failure_code='CONTEXT_CHANGED',completed_at=? WHERE id=?",clock.instant(),operation);return null;}
             db.cas(db.update("UPDATE li_p0_channel_operation SET status='DISPATCHING',attempt=attempt+1 WHERE id=? AND status='QUEUED'",operation));return op;
         });
@@ -97,7 +98,7 @@ public class ChannelService {
     private void finish(Map<String,Object> op,JsonObject response,Map<String,Object> capability,String ref,ChannelFailure failure){
         tx.executeWithoutResult(status->{
             db.required("SELECT id FROM li_p0_consistency_guard WHERE id=1 FOR SHARE");db.one("SELECT id FROM li_admin_user WHERE id=? FOR UPDATE",op.get("actor_id"));var before=raw(id(op,"object_id"));String store=id(before,"store_id"),id=id(before,"id");db.required("SELECT id FROM li_store WHERE id=? FOR UPDATE",store);var relation=raw(id);var config=configs.raw(id(relation,"config_id"));var record=db.required("SELECT * FROM li_p0_channel_operation WHERE id=? FOR UPDATE",op.get("id"));if(!"DISPATCHING".equals(id(record,"status")))return;
-            if(!current(op,relation,config)||!permitted(id(op,"actor_id"))){db.update("UPDATE li_p0_channel_operation SET status='STALE',response_ref=?,failure_code=?,completed_at=? WHERE id=?",ref,failure==null?"CONTEXT_CHANGED":failure.code(),clock.instant(),op.get("id"));return;}
+            if(!current(op,relation,config)||!permitted(op)){db.update("UPDATE li_p0_channel_operation SET status='STALE',response_ref=?,failure_code=?,completed_at=? WHERE id=?",ref,failure==null?"CONTEXT_CHANGED":failure.code(),clock.instant(),op.get("id"));return;}
             var app=application(relation);String operationState="SUCCEEDED",failureCode=null;Map<String,Object> safe;
             if(failure!=null){operationState=failure.uncertain()?"UNKNOWN":"FAILED";failureCode=failure.code();safe=map("code",failureCode,"uncertain",failure.uncertain(),"recoverBy","QUERY_ORIGINAL_APPLICATION");db.update("UPDATE li_p0_submerchant_relation SET capability_state='UNVERIFIED',last_sync_state=?,version=version+1,updated_at=? WHERE id=?",failure.uncertain()?"UNKNOWN":"FAILED",clock.instant(),id);if("SUBMIT".equals(id(op,"action")))db.update("UPDATE li_p0_channel_application SET state=? WHERE id=?",failure.uncertain()?"UNKNOWN":"DRAFT",app.get("id"));}
             else{
@@ -112,7 +113,10 @@ public class ChannelService {
             db.update("UPDATE li_p0_channel_operation SET status=?,safe_response=?,response_ref=?,failure_code=?,completed_at=? WHERE id=?",operationState,write(safe),ref,failureCode,clock.instant(),op.get("id"));mutations.invalidated(store,id,"CHANNEL_EVIDENCE",number(relation,"version")+1);db.update("INSERT INTO li_p0_audit(id,actor_id,identity_domain,action,store_id,object_id,request_id,before_version,after_version,reason,created_at) VALUES(?,?,'MANAGER','channel.result',?,?,?,?,?,?,?)",db.id(),op.get("actor_id"),store,id,op.get("request_id"),number(relation,"version"),number(relation,"version")+1,operationState,clock.instant());
         });
     }
-    private boolean permitted(String actor){try{return access.managerPermissions(actor).contains("channel.onboard");}catch(RuntimeException denied){return false;}}
+    private boolean permitted(Map<String,Object> operation){try{String actor=id(operation,"actor_id");if(access.managerPermissions(actor).contains("channel.onboard"))return true;
+        var extension=stage45==null?null:stage45.getIfAvailable();
+        return extension!=null&&"QUERY".equals(id(operation,"action"))&&"APPLICATION".equals(id(operation,"object_type"))&&"MOCK".equals(id(db.required("SELECT mode FROM li_p0_submerchant_relation WHERE id=?",operation.get("object_id")),"mode"))&&extension.managerPermissions(actor).contains("channel.sync");
+    }catch(RuntimeException denied){return false;}}
     private boolean current(Map<String,Object> op,Map<String,Object> relation,Map<String,Object> config){return number(op,"request_seq")==number(relation,"request_seq")&&number(op,"relation_version")==number(relation,"version")&&number(op,"config_version")==number(config,"config_version")&&flag(config,"enabled")&&relation.get("active_store_key")!=null;}
     private Object requiredActions(JsonObject response){return ChannelUserActions.summary(response);}
     public Object requiredAction(String id,long expectedVersion){

@@ -11,6 +11,7 @@ public final class Stage1Routes {
     public record Route(SessionDomain domain,String method,String template,String action,Pattern pattern) { }
     private static final List<Route> ROUTES=new ArrayList<>();
     static {
+        add(SessionDomain.STORE,"PUT","/goods/{id}/stock","stock.write");
         read(SessionDomain.MANAGER,"ui/stage2-goods","goods.read");
         add(SessionDomain.MANAGER,"GET","/ui/stage2-stores","goods.read");
         // Stage1 Manager presentation: read-only, finite routes, original action grants.

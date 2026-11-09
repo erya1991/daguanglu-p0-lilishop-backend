@@ -611,6 +611,7 @@ public class OrderServiceImpl extends ServiceImpl<OrderMapper, Order> implements
     @OrderLogPoint(description = "'订单['+#orderSn+']发货，发货单号['+#logisticsNo+']'", orderSn = "#orderSn")
     @Transactional(rollbackFor = Exception.class)
     public Order delivery(String orderSn, String logisticsNo, String logisticsId) {
+        if(stage2Boundary!=null)stage2Boundary.rejectLegacyWrite();
         OrderFulfillParamsDTO params = new OrderFulfillParamsDTO();
         params.setOrderSn(orderSn);
         params.setFulfillmentMode(FulfillmentModeEnum.WHOLE.name());
@@ -623,6 +624,7 @@ public class OrderServiceImpl extends ServiceImpl<OrderMapper, Order> implements
     @OrderLogPoint(description = "'订单['+#params.orderSn+']统一发货'", orderSn = "#params.orderSn")
     @Transactional(rollbackFor = Exception.class)
     public Order fulfillOrder(OrderFulfillParamsDTO params) {
+        if(stage2Boundary!=null)stage2Boundary.rejectLegacyWrite();
         if (params == null || CharSequenceUtil.isBlank(params.getOrderSn())) {
             throw new ServiceException(ResultCode.ORDER_DELIVER_ERROR);
         }
@@ -756,6 +758,7 @@ public class OrderServiceImpl extends ServiceImpl<OrderMapper, Order> implements
     @OrderLogPoint(description = "'订单['+#orderSn+']核销，核销码['+#verificationCode+']'", orderSn = "#orderSn")
     @Transactional(rollbackFor = Exception.class)
     public Order take(String orderSn, String verificationCode) {
+        if(stage2Boundary!=null)stage2Boundary.rejectLegacyWrite();
 
         //获取订单信息
         Order order = this.getBySn(orderSn);
@@ -769,6 +772,7 @@ public class OrderServiceImpl extends ServiceImpl<OrderMapper, Order> implements
 
     @Override
     public Order take(String verificationCode) {
+        if(stage2Boundary!=null)stage2Boundary.rejectLegacyWrite();
         String storeId = OperationalJudgment.judgment(UserContext.getCurrentUser()).getStoreId();
         Order order = this.getOne(new LambdaQueryWrapper<Order>().eq(Order::getVerificationCode, verificationCode).eq(Order::getStoreId, storeId));
         if (order == null) {
@@ -783,6 +787,7 @@ public class OrderServiceImpl extends ServiceImpl<OrderMapper, Order> implements
     @Override
     @Transactional(rollbackFor = Exception.class)
     public String confirmVerification(String code) {
+        if(stage2Boundary!=null)stage2Boundary.rejectLegacyWrite();
         if (CharSequenceUtil.isBlank(code)) {
             throw new ServiceException(ResultCode.ORDER_TAKE_ERROR);
         }
@@ -815,6 +820,7 @@ public class OrderServiceImpl extends ServiceImpl<OrderMapper, Order> implements
 
     @Override
     public OrderVerificationPreviewVO previewVerification(String code) {
+        if(stage2Boundary!=null)stage2Boundary.rejectLegacyWrite();
         if (CharSequenceUtil.isBlank(code)) {
             throw new ServiceException(ResultCode.ORDER_TAKE_ERROR);
         }
@@ -903,6 +909,7 @@ public class OrderServiceImpl extends ServiceImpl<OrderMapper, Order> implements
     @OrderLogPoint(description = "'订单['+#orderSn+']完成'", orderSn = "#orderSn")
     @Transactional(rollbackFor = Exception.class)
     public void complete(String orderSn) {
+        if(stage2Boundary!=null)stage2Boundary.rejectLegacyWrite();
         //是否可以查询到订单
         Order order = OperationalJudgment.judgment(this.getBySn(orderSn));
         complete(order, orderSn);
@@ -1018,7 +1025,8 @@ public class OrderServiceImpl extends ServiceImpl<OrderMapper, Order> implements
      * @param orderSn 订单编号
      */
     @Transactional(rollbackFor = Exception.class)
-    public void complete(Order order, String orderSn) {//修改订单状态为完成
+    public void complete(Order order, String orderSn) {
+        if(stage2Boundary!=null)stage2Boundary.rejectLegacyWrite();//修改订单状态为完成
         this.updateStatus(orderSn, OrderStatusEnum.COMPLETED);
         //修改订单货物可以进行评价
         orderItemService.update(new UpdateWrapper<OrderItem>().eq(ORDER_SN_COLUMN, orderSn)

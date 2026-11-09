@@ -23,7 +23,9 @@ public class Stage2TradeService {
     public Object create(Object body){
         String member=tx.member();var f=new Fields(body).only("intentId","quoteId","confirmationHash");String intent=f.text("intentId",8,64,true);Stage1Exception.require(intent.matches("[A-Za-z0-9_-]+"),422,"INTENT_ID_INVALID");f.id("quoteId",true);String digest=f.text("confirmationHash",64,64,true);Stage1Exception.require(digest.matches("[a-f0-9]{64}"),422,"CONFIRMATION_INVALID");String payloadHash=hash(body);
         tx.locked(member,List.of(),()->{
-            var old=db.one("SELECT * FROM li_p0_checkout_intent WHERE member_id=? AND intent_id=? FOR UPDATE",member,intent);
+            // The locked Member is the intent-writer mutex. Locking an absent child key
+            // would share a supremum gap across unrelated Members and deadlock their inserts.
+            var old=db.one("SELECT * FROM li_p0_checkout_intent WHERE member_id=? AND intent_id=?",member,intent);
             if(old!=null)Stage1Exception.require(payloadHash.equals(id(old,"payload_hash")),409,"IDEMPOTENCY_CONFLICT");
             else {db.update("INSERT INTO li_p0_checkout_intent(member_id,intent_id,payload_hash,payload_json,status,created_at,updated_at) VALUES(?,?,?,?,'ACCEPTED',?,?)",member,intent,payloadHash,write(body),clock.instant(),clock.instant());tx.task("INTENT",member+":"+intent);}
             return null;
@@ -92,7 +94,7 @@ public class Stage2TradeService {
         // Historical test rows remain untouched; incomplete evidence cannot render ordinary success.
         Object protection=row.get("protection");if("SUCCEEDED".equals(payment)&&paid==null&&protection==null)protection="PAYMENT_EVIDENCE_INCOMPLETE";
         if(row.get("protection")==null&&status.equals("WAIT_PAY")&&Set.of("NOT_STARTED","UNPAID","CONFIRMED_FAILED").contains(payment)&&close.equals("NONE")&&clock.instant().isBefore(instant(row.get("pay_deadline"))))actions.add("PAY");
-        if(!Set.of("PAID","CLOSED").contains(status)&&!"SUCCEEDED".equals(payment)&&close.equals("NONE"))actions.add("CANCEL");
+        if(!Set.of("PAID","CLOSED").contains(status)&&!"SUCCEEDED".equals(payment)&&close.equals("NONE")&&!Stage2PaymentService.OUT_OF_SCOPE.equals(protection))actions.add("CANCEL");
         return map("tradeId",trade,"intentId",row.get("intent_id"),"mode","MOCK","status",status,"paymentStatus",payment,"closeStatus",close,"protection",protection,"closeReason",row.get("close_reason"),"closeDetails",row.get("close_details")==null?null:object(row.get("close_details")),"attention",row.get("attention_at")!=null,"amountCent",row.get("amount_cent"),"paidAt",paid==null?null:paid.get("paidAt"),"paidAmountCent",paid==null?null:paid.get("amountCent"),"createdAt",instant(row.get("created_at")),"payDeadline",instant(row.get("pay_deadline")),"lastVerifiedAt",instant(row.get("verified_at")),"allowedActions",actions,"orders",db.rows("SELECT payload_json FROM li_p0_order_snapshot WHERE trade_id=? ORDER BY store_id",trade).stream().map(r->object(r.get("payload_json")).get("order")).toList(),"serverTime",clock.instant());
     }
     public Object pending(int page,int size){String member=tx.member();Stage1Exception.require(page>=1&&size>=1&&size<=100,422,"PAGE_INVALID");var cards=new ArrayList<Map<String,Object>>();
