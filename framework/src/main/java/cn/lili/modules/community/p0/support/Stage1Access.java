@@ -22,6 +22,8 @@ public class Stage1Access implements SessionAccessExtension, MerchantLifecyclePo
     private org.springframework.beans.factory.ObjectProvider<cn.lili.modules.community.p0.stage3.Stage3Authorization> stage3;
     @org.springframework.beans.factory.annotation.Autowired(required=false)
     private org.springframework.beans.factory.ObjectProvider<cn.lili.modules.community.p0.stage45.Stage45Authorization> stage45;
+    @org.springframework.beans.factory.annotation.Autowired(required=false)
+    private cn.lili.modules.permission.manager.NativeManagerAccess nativeManager;
     private final Stage1Db db;
     private final Stage1Settings settings;
     private final MerchantGrantMapper merchantGrants;
@@ -31,7 +33,7 @@ public class Stage1Access implements SessionAccessExtension, MerchantLifecyclePo
             "file.read","file.upload","operation.read","invitation.accept","region.read");
     public Stage1Access(Stage1Db db,Stage1Settings settings,MerchantGrantMapper merchantGrants){this.db=db;this.settings=settings;this.merchantGrants=merchantGrants;}
     @Override public boolean ownsManager(String id){
-        return managerRoles(id).stream().anyMatch(settings.getManagerRoleIds()::contains);
+        return nativeManager!=null || managerRoles(id).stream().anyMatch(settings.getManagerRoleIds()::contains);
     }
     private Set<String> managerRoles(String id){
         var result=new HashSet<String>();
@@ -39,6 +41,7 @@ public class Stage1Access implements SessionAccessExtension, MerchantLifecyclePo
         return Set.copyOf(result);
     }
     @Override public void checkManager(String id){
+        if(nativeManager!=null){nativeManager.check(id);return;}
         var admin=db.one("SELECT status,delete_flag,is_super FROM li_admin_user WHERE id=?",id);
         deny(admin!=null && flag(admin,"status")&&!flag(admin,"delete_flag")&&admin.get("is_super")!=null);
         var roles=managerRoles(id);
@@ -51,6 +54,7 @@ public class Stage1Access implements SessionAccessExtension, MerchantLifecyclePo
             String permission=id(row,"permission");
             if(permission!=null&&permission.startsWith("s45.")&&stage45!=null&&stage45.getIfAvailable()!=null)continue;
             if(permission!=null&&permission.startsWith("s3.")&&stage3!=null&&stage3.getIfAvailable()!=null)continue;
+            if(nativeManager!=null&&(permission==null||!permission.startsWith("s1.")))continue;
             deny(permission!=null&&permission.startsWith("s1.")&&row.get("is_super")!=null);
             String action=permission.substring(3);
             if(readAction(action)||flag(row,"is_super"))permissions.add(action);
@@ -91,12 +95,13 @@ public class Stage1Access implements SessionAccessExtension, MerchantLifecyclePo
             deny(verified);
             SessionDomain domain=user==null?SessionDomain.APPLICANT:switch(user.getRole()){case MANAGER->SessionDomain.MANAGER;case STORE->SessionDomain.STORE;case MEMBER->SessionDomain.RESIDENT;default->throw new SessionException(SessionException.Code.DENIED);};
             var route=Stage1Routes.find(domain,method,path);deny(route!=null);
-            if(domain==SessionDomain.MANAGER) deny(managerPermissions(user.getId()).contains(route.action()) || Set.of("operation.read","file.read","file.upload","region.read").contains(route.action())&& !managerPermissions(user.getId()).isEmpty());
+            if(domain==SessionDomain.MANAGER) deny(managerRouteAllowed(managerPermissions(user.getId()),route.action(),method,path));
             if(domain==SessionDomain.STORE){deny(storePermissions(user).contains(route.action()));requireStoreRoute(user.getStoreId(),method,path,route.action());}
             return true;
         }
         if(user!=null&&user.getRole()==UserEnums.MANAGER&&ownsManager(user.getId())) {
             deny(verified);
+            if(nativeManager!=null){nativeManager.route(user.getId(),method,path);return true;}
             deny(method.equals("GET")&&Set.of("/manager/passport/user/info","/manager/permission/menu/memberMenu").contains(path)
                     || method.equals("POST")&&path.equals("/manager/passport/user/logout"));
             checkManager(user.getId());return true;
@@ -109,6 +114,19 @@ public class Stage1Access implements SessionAccessExtension, MerchantLifecyclePo
             return true;
         }
         return false;
+    }
+    public static boolean managerRouteAllowed(Set<String> permissions,String action,String method,String path){
+        if(method.equals("GET")) {
+            Set<String> lookup=switch(path){
+                case "/manager/p0/s1/ui/lookups/categories" -> Set.of("catalog.configure","admission.review","goods.read","goods.review","agreement.read","rule.read","store.read");
+                case "/manager/p0/s1/ui/lookups/stores" -> Set.of("store.read","goods.read","goods.review");
+                case "/manager/p0/s1/ui/lookups/units" -> Set.of("catalog.configure","goods.read","goods.review");
+                case "/manager/p0/s1/ui/lookups/channel-configs" -> Set.of("channel.configure","channel.onboard","channel.receiver");
+                default -> Set.of();
+            };
+            if(!lookup.isEmpty())return permissions.stream().anyMatch(lookup::contains);
+        }
+        return permissions.contains(action)||Set.of("operation.read","file.read","file.upload","region.read").contains(action)&&!permissions.isEmpty();
     }
     private void requireStoreRoute(String store,String method,String path,String action){
         var current=db.required("SELECT s.store_disable,c.admission_state FROM li_store s JOIN li_p0_store_control c ON c.store_id=s.id WHERE s.id=?",store);
@@ -125,6 +143,7 @@ public class Stage1Access implements SessionAccessExtension, MerchantLifecyclePo
         checkIssuedAt(record.identity(),record.issuedAt());
     }
     public void checkIssuedAt(SessionIdentity identity,long createdAt){
+        if(nativeManager!=null&&identity.domain()==SessionDomain.MANAGER)nativeManager.checkIssuedAt(identity.subject(),createdAt);
         if(identity.domain()!=SessionDomain.STORE)return;
         var cutoffs=db.rows("SELECT c.closed_at,k.session_cutoff FROM li_clerk n JOIN li_p0_store_control c ON c.store_id=n.store_id LEFT JOIN li_p0_clerk_control k ON k.clerk_id=n.id WHERE n.member_id=?",identity.subject());
         for(var row:cutoffs)for(String key:List.of("closed_at","session_cutoff")) {

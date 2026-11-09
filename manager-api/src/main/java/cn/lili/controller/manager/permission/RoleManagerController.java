@@ -31,9 +31,11 @@ public class RoleManagerController {
     @Autowired(required = false)
     private ManagerWebSupport managerWeb;
 
+    private Role clean(Role input,String id){if(input.getName()==null||input.getName().isBlank()||input.getName().length()>100)throw new cn.lili.common.exception.ServiceException(cn.lili.common.enums.ResultCode.PARAMS_ERROR);Role role=new Role();role.setId(id);role.setName(input.getName());role.setDescription(input.getDescription());return role;}
     @Operation(description = "添加角色")
     @PostMapping
     public ResultMessage<Role> add(Role role) {
+        if(managerWeb!=null&&managerWeb.nativeManager!=null)role=clean(role,null);
         roleService.save(role);
         return ResultUtil.data(role);
     }
@@ -43,7 +45,7 @@ public class RoleManagerController {
     @Parameter(name = "pageVo", description = "分页参数")
     @Parameter(name = "role", description = "查询参数")
     public ResultMessage<Page> add(PageVO pageVo, Role role) {
-        if (ManagerWebSupport.active()) {
+        if (managerWeb != null && managerWeb.scoped()) {
             if (managerWeb == null) throw new cn.lili.common.exception.ServiceException("CONFIG_REQUIRED");
             return ResultUtil.data(ManagerWebSupport.page(managerWeb.policy.roles(managerWeb.actor()), pageVo));
         }
@@ -56,6 +58,7 @@ public class RoleManagerController {
     @Parameter(name = "roleId", description = "角色ID")
     @Parameter(name = "role", description = "角色信息")
     public ResultMessage<Role> edit(@PathVariable String roleId, Role role) {
+        if(managerWeb!=null&&managerWeb.nativeManager!=null){managerWeb.nativeManager.reference("role",roleId);role=clean(role,roleId);}
         role.setId(roleId);
         roleService.updateById(role);
         return ResultUtil.data(role);

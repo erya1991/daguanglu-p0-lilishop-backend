@@ -26,6 +26,25 @@ import java.util.List;
 public class RegionSettingManagerController {
     @Autowired
     private RegionService regionService;
+    @Autowired private org.springframework.jdbc.core.JdbcTemplate jdbc;
+    @org.springframework.beans.factory.annotation.Value("${p0.uat.enabled:false}") private boolean uat;
+
+    private void requireUnused(Region row) {
+        if(row==null)throw new cn.lili.common.exception.ServiceException("REGION_NOT_FOUND");
+        String id=row.getId(),code=row.getAdCode();
+        long refs=jdbc.queryForObject("SELECT (SELECT COUNT(*) FROM li_region WHERE parent_id=? AND delete_flag=0)+(SELECT COUNT(*) FROM li_store WHERE FIND_IN_SET(?,store_address_id_path)>0)+(SELECT COUNT(*) FROM li_store_detail WHERE FIND_IN_SET(?,company_address_id_path)>0)+(SELECT COUNT(*) FROM li_member WHERE FIND_IN_SET(?,region_id)>0)+(SELECT COUNT(*) FROM li_member_address WHERE FIND_IN_SET(?,consignee_address_id_path)>0)+(SELECT COUNT(*) FROM li_order WHERE FIND_IN_SET(?,consignee_address_id_path)>0)+(SELECT COUNT(*) FROM li_p0_point_control WHERE province_code=? OR city_code=? OR district_code=?)+(SELECT COUNT(*) FROM li_p0_fulfillment_config WHERE JSON_SEARCH(methods,'one',?) IS NOT NULL)",Long.class,id,id,id,id,code,code,code,code,code,code);
+        if(refs>0)throw new cn.lili.common.exception.ServiceException("REGION_IN_USE");
+    }
+    private void prepare(Region row,String id) {
+        if(!uat)return;
+        if(row.getAdCode()==null||!row.getAdCode().matches("[0-9]{6,12}")||row.getOrderNum()==null)throw new cn.lili.common.exception.ServiceException("REGION_INVALID");
+        var levels=java.util.List.of("province","city","district","street");
+        Region parent="0".equals(row.getParentId())?null:regionService.getById(row.getParentId());
+        int level=levels.indexOf(row.getLevel());
+        if(level<0||(parent==null?level!=0:level!=levels.indexOf(parent.getLevel())+1)||(!"0".equals(row.getParentId())&&parent==null))throw new cn.lili.common.exception.ServiceException("REGION_HIERARCHY_INVALID");
+        if(jdbc.queryForObject("SELECT COUNT(*) FROM li_region WHERE ad_code=? AND delete_flag=0 AND id<>?",Long.class,row.getAdCode(),id==null?"0":id)>0)throw new cn.lili.common.exception.ServiceException("REGION_CODE_EXISTS");
+        row.setPath(parent==null?"0":parent.getPath().endsWith(","+parent.getId())||parent.getPath().equals(parent.getId())?parent.getPath():parent.getPath()+","+parent.getId());
+    }
 
     @DemoSite
     @PostMapping("/sync")
@@ -55,6 +74,8 @@ public class RegionSettingManagerController {
     @Parameter(name = "id", description = "地区ID", required = true)
     @Parameter(name = "region", description = "地区信息", required = true)
     public ResultMessage<Region> update(@PathVariable String id, @Valid Region region) {
+        if(uat){Region prior=regionService.getById(id);if(prior==null)throw new cn.lili.common.exception.ServiceException("REGION_NOT_FOUND");if(!java.util.Objects.equals(prior.getAdCode(),region.getAdCode())||!java.util.Objects.equals(prior.getParentId(),region.getParentId())||!java.util.Objects.equals(prior.getLevel(),region.getLevel()))requireUnused(prior);}
+        prepare(region,id);
         region.setId(id);
         regionService.updateById(region);
         return ResultUtil.data(region);
@@ -65,6 +86,8 @@ public class RegionSettingManagerController {
     @Operation(summary = "增加地区")
     @Parameter(name = "region", description = "地区信息", required = true)
     public ResultMessage<Region> save(@Valid Region region) {
+        prepare(region,null);
+        if(uat){region.setId(null);region.setDeleteFlag(false);}
         regionService.save(region);
         return ResultUtil.data(region);
     }
@@ -74,6 +97,7 @@ public class RegionSettingManagerController {
     @Operation(summary = "批量通过id删除")
     @Parameter(name = "ids", description = "地区ID列表", required = true)
     public ResultMessage<Object> delAllByIds(@PathVariable List<String> ids) {
+        if(uat)for(String id:ids)requireUnused(regionService.getById(id));
         regionService.removeByIds(ids);
         return ResultUtil.success();
     }

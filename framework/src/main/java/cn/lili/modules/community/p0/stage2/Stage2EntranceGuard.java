@@ -15,10 +15,14 @@ import java.util.Set;
 
 public final class Stage2EntranceGuard extends OncePerRequestFilter {
     private final boolean stage3,stage45;
+    private boolean integrated;
     public Stage2EntranceGuard(){this(false,false);}
     public Stage2EntranceGuard(boolean stage3){this(stage3,false);}
     public Stage2EntranceGuard(boolean stage3,boolean stage45){this.stage3=stage3;this.stage45=stage45;}
+    public Stage2EntranceGuard(boolean stage3,boolean stage45,boolean integrated){this(stage3,stage45);this.integrated=integrated;}
     private boolean permitted(String method,String path){
+        if(integrated && (method.equals("POST")&&Set.of("/buyer/passport/uat/login","/store/passport/uat/login").contains(path)||Set.of("GET","POST").contains(method)&&Set.of("/buyer/common/slider/LOGIN","/store/common/slider/LOGIN").contains(path)))return true;
+        if(integrated && Stage2Routes.canonical(path) && (cn.lili.modules.permission.manager.NativeManagerRoutes.allowed(method,path) || Stage1Routes.all().stream().anyMatch(r->r.method().equals(method)&&r.pattern().matcher(path).matches())))return true;
         if(stage45&&cn.lili.modules.community.p0.stage45.Stage45Routes.path(path))return cn.lili.modules.community.p0.stage45.Stage45Routes.allowed(method,path);
         if(stage3&&cn.lili.modules.community.p0.stage3.Stage3Routes.path(path))return cn.lili.modules.community.p0.stage3.Stage3Routes.allowed(method,path);
         if(stage3&&Stage2Routes.canonical(path)&&Stage1Routes.path(path)&&Stage1Routes.all().stream().anyMatch(r->Set.of("staff.manage","invitation.accept").contains(r.action())&&r.method().equals(method)&&r.pattern().matcher(path).matches()))return true;
@@ -46,7 +50,7 @@ public final class Stage2EntranceGuard extends OncePerRequestFilter {
     @Configuration @ConditionalOnProperty(name="p0.stage2.enabled", havingValue="true")
     public static class Registration {
         @Bean public FilterRegistrationBean<Stage2EntranceGuard> stage2EntranceGuard(org.springframework.core.env.Environment env) {
-            var bean = new FilterRegistrationBean<>(new Stage2EntranceGuard(env.getProperty("p0.stage3.enabled",Boolean.class,false),env.getProperty("p0.stage45.enabled",Boolean.class,false))); bean.setOrder(Ordered.HIGHEST_PRECEDENCE + 10);
+            var bean = new FilterRegistrationBean<>(new Stage2EntranceGuard(env.getProperty("p0.stage3.enabled",Boolean.class,false),env.getProperty("p0.stage45.enabled",Boolean.class,false),env.getProperty("p0.uat.enabled",Boolean.class,false))); bean.setOrder(Ordered.HIGHEST_PRECEDENCE + 10);
             bean.setDispatcherTypes(DispatcherType.REQUEST, DispatcherType.ASYNC, DispatcherType.FORWARD); bean.addUrlPatterns("/*"); return bean;
         }
     }

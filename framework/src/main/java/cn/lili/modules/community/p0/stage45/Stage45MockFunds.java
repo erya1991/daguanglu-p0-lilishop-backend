@@ -23,10 +23,11 @@ public class Stage45MockFunds implements Stage45FundsPort {
     private final JdbcTemplate jdbc;private final TransactionTemplate tx;private final Stage2Settings settings;private final Clock clock;
     public Stage45MockFunds(Stage2Settings settings,@Qualifier("stage1Clock")Clock clock){
         this.settings=settings;this.clock=clock;
-        Stage1Exception.require(settings.isStage45ResourceMode()&&"TEST".equals(settings.getEnvironment())&&"MOCK".equals(settings.getMode())&&settings.getMockJdbcUrl().startsWith("jdbc:mysql://127.0.0.1:19606/dgl_p0_s45_mock?")&&"s45_mock".equals(settings.getMockUsername()),503,"FUNDS_MOCK_RESOURCE_INVALID");
+        if(settings.isUatResourceMode())cn.lili.modules.community.p0.uat.UatResourceScope.registered(settings);
+        Stage1Exception.require((settings.isStage45ResourceMode()||settings.isUatResourceMode())&&"TEST".equals(settings.getEnvironment())&&"MOCK".equals(settings.getMode())&&settings.getMockJdbcUrl().startsWith(settings.isUatResourceMode()?"jdbc:mysql://127.0.0.1:19706/dgl_p0_uat_mock?":"jdbc:mysql://127.0.0.1:19606/dgl_p0_s45_mock?")&&(settings.isUatResourceMode()?"uat_mock":"s45_mock").equals(settings.getMockUsername()),503,"FUNDS_MOCK_RESOURCE_INVALID");
         var ds=new DriverManagerDataSource(settings.getMockJdbcUrl(),settings.getMockUsername(),settings.getMockPassword());jdbc=new JdbcTemplate(ds);tx=new TransactionTemplate(new DataSourceTransactionManager(ds));
         var identity=jdbc.queryForMap("SELECT @@server_uuid uuid,DATABASE() db");
-        Stage1Exception.require(settings.getMysqlUuid().equals(String.valueOf(identity.get("uuid")))&&"dgl_p0_s45_mock".equals(identity.get("db")),503,"FUNDS_MOCK_RESOURCE_INVALID");
+        Stage1Exception.require(settings.getMysqlUuid().equals(String.valueOf(identity.get("uuid")))&&(settings.isUatResourceMode()?"dgl_p0_uat_mock":"dgl_p0_s45_mock").equals(identity.get("db")),503,"FUNDS_MOCK_RESOURCE_INVALID");
     }
     private Map<String,Object> one(String sql,Object...args){var rows=jdbc.queryForList(sql,args);Stage1Exception.require(rows.size()<=1,409,"MOCK_RELATION_CONFLICT");return rows.isEmpty()?null:rows.getFirst();}
     private int update(String sql,Object...args){return jdbc.update(sql,Arrays.stream(args).map(v->v instanceof Instant i?java.sql.Timestamp.from(i):v).toArray());}

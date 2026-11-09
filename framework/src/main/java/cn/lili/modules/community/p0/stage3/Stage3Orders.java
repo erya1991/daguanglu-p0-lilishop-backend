@@ -62,9 +62,15 @@ public class Stage3Orders {
             "contact",contact,"address",address,"point",original.get("point"),"buyerRemark",original.get("remark"),"canRecordException",store&&permissions.contains("order.exception"),"allowedActions",actions,
             "logistics",map("company",row.get("logistics_name"),"code",row.get("logistics_code"),"number",row.get("logistics_no"),"shippedAt",instant(row.get("logistics_time"))),"mode","MOCK","serverTime",clock.instant());
         if(store&&detail)result.put("merchantRemark",row.get("seller_remark"));
-        if(detail){result.put("timeline",db.rows("SELECT event_type,actor_domain,actor_id,created_at,payload_json FROM li_p0_s3_event WHERE order_id=? ORDER BY created_at,id",row.get("id")).stream().map(e->map("type",e.get("event_type"),"actorDomain",e.get("actor_domain"),"actorId",id(e,"actor_id"),"at",instant(e.get("created_at")))).toList());
+        if(detail){result.put("timeline",fulfillmentTimeline(id(row,"id")));
             result.put("exceptions",db.rows("SELECT exception_type,reason,created_at FROM li_p0_s3_exception WHERE order_id=? ORDER BY id DESC",row.get("id")).stream().map(e->map("type",e.get("exception_type"),"reason",e.get("reason"),"at",instant(e.get("created_at")))).toList());}
         return result;
+    }
+    // This section contains fulfillment facts. After-sale and funds use their separately authorized views.
+    List<Map<String,Object>> fulfillmentTimeline(String order) {
+        return db.rows("SELECT event_type,actor_domain,actor_id,created_at FROM li_p0_s3_event WHERE order_id=? ORDER BY created_at,id",order).stream()
+            .filter(e->!id(e,"event_type").startsWith("S45_"))
+            .map(e->map("type",e.get("event_type"),"actorDomain",e.get("actor_domain"),"actorId",id(e,"actor_id"),"at",instant(e.get("created_at")))).toList();
     }
     @Transactional(readOnly=true)
     public Object list(Map<String,String> query){

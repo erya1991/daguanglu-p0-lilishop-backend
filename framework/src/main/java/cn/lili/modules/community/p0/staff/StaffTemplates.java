@@ -14,6 +14,7 @@ public class StaffTemplates {
     @org.springframework.beans.factory.annotation.Value("${p0.stage3.enabled:false}") private boolean stage3Enabled;
     @org.springframework.beans.factory.annotation.Value("${p0.stage45.enabled:false}") private boolean stage45Enabled;
     private Map<String,Set<String>> templates(){if(!stage3Enabled)return TEMPLATES;var result=new LinkedHashMap<>(TEMPLATES);result.put("S3_ORDER_READER",Set.of("s3.order.read","s3.message.read"));result.put("S3_FULFILLMENT",Set.of("s3.order.read","s3.fulfillment.write","s3.order.exception","s3.message.read"));result.put("S3_VERIFIER",Set.of("s3.order.read","s3.verification.lookup","s3.verification.confirm","s3.order.exception","s3.message.read"));if(stage45Enabled){result.put("S45_AFTERSALE_READER",Set.of("s45.aftersale.read","s45.message.read"));result.put("S45_AFTERSALE_REVIEWER",Set.of("s45.aftersale.read","s45.aftersale.review","s45.message.read"));result.put("S45_RETURN_RECEIVER",Set.of("s45.aftersale.read","s45.aftersale.receive","s45.message.read"));result.put("S45_FUNDS_READER",Set.of("s45.funds.read","s45.message.read"));result.put("S45_EVALUATION_READER",Set.of("s45.evaluation.read","s45.message.read"));}return result;}
+    @org.springframework.beans.factory.annotation.Value("${p0.uat.enabled:false}") private boolean integrated;
     private final Stage1Db db;private final Clock clock;
     public StaffTemplates(Stage1Db db,@Qualifier("stage1Clock") Clock clock){this.db=db;this.clock=clock;}
     public static final Map<String,Set<String>> TEMPLATES=Map.of(
@@ -38,6 +39,11 @@ public class StaffTemplates {
         }
     }
     public void validate(String store,List<String> roles){
+        if(integrated){
+            Stage1Exception.require(roles!=null&&roles.size()<=100&&new HashSet<>(roles).size()==roles.size(),422,"STAFF_ROLE_INVALID");
+            for(String role:roles)Stage1Exception.require(role!=null&&role.matches("[0-9]{1,19}")&&db.count("SELECT COUNT(*) FROM li_store_role WHERE id=? AND store_id=? AND delete_flag=0",role,store)==1,422,"STAFF_ROLE_INVALID");
+            return;
+        }
         Stage1Exception.require(!roles.isEmpty()&&roles.size()<=templates().size(),422,"STAFF_ROLE_REQUIRED");
         for(String role:roles){var row=db.required("SELECT name,description FROM li_store_role WHERE id=? AND store_id=? AND delete_flag=0",role,store);Stage1Exception.require(templates().containsKey(id(row,"name"))&&((id(row,"name").startsWith("S45_")?"S45:":id(row,"name").startsWith("S3_")?"S3:":"S1:")+id(row,"name")).equals(id(row,"description")),422,"STAFF_ROLE_INVALID");}
     }
@@ -46,7 +52,9 @@ public class StaffTemplates {
         for(String role:roles)db.nativeInsert("li_clerk_role",map("id",db.id(),"clerk_id",clerk,"role_id",role));
         db.update("UPDATE li_clerk SET role_ids=? WHERE id=? AND store_id=?",String.join(",",roles),clerk,store);
     }
-    public Object options(String store){return db.rows("SELECT id,name FROM li_store_role WHERE store_id=? AND delete_flag=0 ORDER BY id",store).stream().filter(r->templates().containsKey(id(r,"name"))).map(r->map("id",id(r,"id"),"name",id(r,"name"),"permissions",templates().get(id(r,"name")))).toList();}
+    public Object options(String store){
+        if(integrated)return db.rows("SELECT id,name FROM li_store_role WHERE store_id=? AND delete_flag=0 ORDER BY id",store).stream().map(r->map("id",id(r,"id"),"name",id(r,"name"),"permissions",db.rows("SELECT m.permission,rm.is_super FROM li_store_menu_role rm JOIN li_store_menu m ON m.id=rm.menu_id AND m.delete_flag=0 WHERE rm.role_id=? AND rm.store_id=? AND rm.delete_flag=0",id(r,"id"),store).stream().filter(g->id(g,"permission")!=null&&(id(g,"permission").endsWith(".read")||flag(g,"is_super"))).map(g->id(g,"permission")).filter(Objects::nonNull).toList())).toList();
+        return db.rows("SELECT id,name FROM li_store_role WHERE store_id=? AND delete_flag=0 ORDER BY id",store).stream().filter(r->templates().containsKey(id(r,"name"))).map(r->map("id",id(r,"id"),"name",id(r,"name"),"permissions",templates().get(id(r,"name")))).toList();}
     public void history(String clerk,String source,String audit){
         var row=db.required("SELECT c.store_id,c.status,k.version,k.revoked FROM li_clerk c JOIN li_p0_clerk_control k ON k.clerk_id=c.id WHERE c.id=?",clerk);
         var roles=db.rows("SELECT role_id FROM li_clerk_role WHERE clerk_id=? ORDER BY role_id",clerk).stream().map(r->id(r,"role_id")).toList();

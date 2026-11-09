@@ -41,4 +41,20 @@ class Stage2RecoveryScopeTest {
         var missing=mock(Stage1Db.class,inv->inv.getMethod().getName().equals("count")?0L:null);assertThrows(IllegalStateException.class,()->new Stage2RecoveryScope(settings,missing).current());
         var protectedTrade=mock(Stage1Db.class,inv->inv.getMethod().getName().equals("count")?1L:null);assertThrows(IllegalStateException.class,()->new Stage2RecoveryScope(settings,protectedTrade).current());
     }
+    @Test void ownedUatScopeIncludesNewPageCreatedGoodsWithoutChangingHumanGrants()throws Exception {
+        settings.setUatResourceMode(true);body.put("dynamicOwnedUat",true);body.put("merchants",List.of("401"));body.put("stores",List.of());body.put("skus",List.of());save();
+        try(var ownership=mockStatic(cn.lili.modules.community.p0.uat.UatResourceScope.class)) {
+            ownership.when(()->cn.lili.modules.community.p0.uat.UatResourceScope.registered(settings)).thenReturn(run);
+            when(db.rows(contains("SELECT DISTINCT c.store_id"),eq(settings.getRunId()+"_merchant"))).thenReturn(List.of(map("id","201")));
+            when(db.rows(contains("SELECT c.sku_id"),eq(settings.getRunId()))).thenReturn(List.of(map("id","301")),List.of(map("id","301"),map("id","302")));
+            when(db.count(contains("c.source_run=?"),eq(settings.getRunId()))).thenReturn(1L,2L);
+            var scope=new Stage2RecoveryScope(settings,db);assertEquals(List.of("301"),scope.current().skus());assertEquals(List.of("301","302"),scope.current().skus());
+            verify(db,never()).update(anyString(),any());
+        }
+    }
+    @Test void dynamicScopeCannotRunOutsideRegisteredUat()throws Exception {
+        body.put("dynamicOwnedUat",true);body.put("merchants",List.of("401"));save();
+        assertThrows(IllegalStateException.class,()->new Stage2RecoveryScope(settings,db).current());verifyNoInteractions(db);
+    }
+
 }

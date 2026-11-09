@@ -34,7 +34,7 @@ public class RoleMenuManagerController {
     @GetMapping("/{roleId}")
     @Parameter(name = "roleId", description = "角色ID")
     public ResultMessage<List<RoleMenu>> get(@PathVariable String roleId) {
-        if (ManagerWebSupport.active()) {
+        if (managerWeb != null && managerWeb.scoped()) {
             if (managerWeb == null) throw new cn.lili.common.exception.ServiceException("CONFIG_REQUIRED");
             return ResultUtil.data(managerWeb.policy.roleMenus(managerWeb.actor(), roleId));
         }
@@ -46,7 +46,7 @@ public class RoleMenuManagerController {
     @Parameter(name = "roleId", description = "角色ID")
     @Parameter(name = "roleMenus", description = "角色菜单列表")
     public ResultMessage save(@PathVariable String roleId, @RequestBody Object payload) {
-        if (ManagerWebSupport.active()) {
+        if (managerWeb != null && managerWeb.scoped()) {
             if (managerWeb == null) throw new cn.lili.common.exception.ServiceException("CONFIG_REQUIRED");
             managerWeb.maintenance.replaceRoleMenus(managerWeb.actor(), roleId, ManagerWebSupport.ids(payload, "menuIds"));
             return ResultUtil.success();

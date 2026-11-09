@@ -31,6 +31,7 @@ import java.util.Set;
 @Service
 public class RoleMenuServiceImpl extends ServiceImpl<RoleMenuMapper, RoleMenu> implements RoleMenuService {
 
+    @Autowired(required=false) private cn.lili.modules.permission.manager.NativeManagerAccess nativeManager;
     @Autowired
     private Cache<Object> cache;
 
@@ -48,6 +49,7 @@ public class RoleMenuServiceImpl extends ServiceImpl<RoleMenuMapper, RoleMenu> i
         if (roleId == null || roleId.isBlank() || roleMenus == null) {
             throw new ServiceException(ResultCode.PARAMS_ERROR);
         }
+        if(nativeManager!=null){nativeManager.reference("role",roleId);if(roleMenus.size()>1000)throw new ServiceException(ResultCode.PARAMS_ERROR);for(var relation:roleMenus)if(relation!=null)nativeManager.reference("menu",relation.getMenuId());}
         List<RoleMenu> replacements = new ArrayList<>(roleMenus.size());
         Set<String> menuIds = new HashSet<>();
         for (RoleMenu relation : roleMenus) {

@@ -37,6 +37,8 @@ public class TimedTaskManagerController {
     @Autowired
     private OrderEveryDayTaskExecute orderEveryDayTaskExecute;
 
+    @Autowired private org.springframework.core.env.Environment environment;
+
     private static final Map<String, String> NAMES = new HashMap<>();
     static {
         // 每分钟
@@ -97,6 +99,7 @@ public class TimedTaskManagerController {
     @Operation(summary = "手动触发指定任务")
     @PostMapping("/trigger/{taskId}")
     public ResultMessage<Object> trigger(@PathVariable String taskId) {
+        if (environment.getProperty("p0.uat.enabled", Boolean.class, false)) return ResultUtil.error(403, "P0_LEGACY_TASK_DISABLED");
         log.info("手动触发任务: {}", taskId);
         try {
             // OrderEveryDayTaskExecute 子任务
@@ -145,7 +148,11 @@ public class TimedTaskManagerController {
         m.put("id", id);
         m.put("name", name);
         m.put("group", group);
-        m.put("cron", cron);
+        String period=group.equals("每分钟")?"minute":group.equals("每小时")?"hour":"day";
+        String configured=environment.getProperty("lili.schedule.every-"+period+"-cron",cron);
+        m.put("cron", configured);
+        m.put("scheduled", !"-".equals(configured));
+        m.put("manualTriggerAllowed", !environment.getProperty("p0.uat.enabled", Boolean.class, false));
         return m;
     }
 }

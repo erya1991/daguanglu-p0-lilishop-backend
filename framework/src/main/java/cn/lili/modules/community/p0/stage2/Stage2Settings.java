@@ -10,6 +10,7 @@ public class Stage2Settings {
     private boolean enabled;
     private boolean stage3ResourceMode;
     private boolean stage45ResourceMode;
+    private boolean uatResourceMode;
     private String environment = "TEST";
     private String mode = "MOCK";
     private String runId;

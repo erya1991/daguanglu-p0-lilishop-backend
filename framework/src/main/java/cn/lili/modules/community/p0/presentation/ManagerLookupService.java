@@ -11,7 +11,7 @@ import static cn.lili.modules.community.p0.support.Stage1Json.*;
 import static cn.lili.modules.community.p0.presentation.ManagerPresentationViews.*;
 
 @Service
-@ConditionalOnProperty(name="p0.stage1.enabled",havingValue="true")
+@cn.lili.modules.community.p0.support.P0BusinessEnabled
 @org.springframework.context.annotation.Conditional(ManagerPresentationCondition.class)
 @Transactional(readOnly=true)
 public class ManagerLookupService {
@@ -35,9 +35,9 @@ public class ManagerLookupService {
         }
         String from,columns,condition="",order="n.id DESC";List<Object> args=new ArrayList<>();
         switch(type){
-            case "stores" -> {require("store.read");from=" FROM li_store n JOIN li_p0_store_control c ON c.store_id=n.id JOIN li_store_detail d ON d.store_id=n.id WHERE c.admission_state='APPROVED' AND n.delete_flag=0";columns="CAST(n.id AS CHAR) AS id,n.store_name AS name,n.store_disable AS status,c.version,d.company_name AS legalName";if(q!=null){condition+=" AND (n.store_name LIKE ? ESCAPE '!' OR d.company_name LIKE ? ESCAPE '!')";args.add(like(q));args.add(like(q));}}
+            case "stores" -> {require("store.read","goods.read","goods.review");from=" FROM li_store n JOIN li_p0_store_control c ON c.store_id=n.id JOIN li_store_detail d ON d.store_id=n.id WHERE c.admission_state='APPROVED' AND n.delete_flag=0";columns="CAST(n.id AS CHAR) AS id,n.store_name AS name,n.store_disable AS status,c.version,d.company_name AS legalName";if(q!=null){condition+=" AND (n.store_name LIKE ? ESCAPE '!' OR d.company_name LIKE ? ESCAPE '!')";args.add(like(q));args.add(like(q));}}
             case "agreements" -> {require("agreement.read");Stage1Exception.require(store!=null,422,"STORE_REQUIRED");from=" FROM li_p0_agreement n WHERE n.store_id=?";args.add(store);columns="CAST(n.id AS CHAR) AS id,JSON_UNQUOTE(JSON_EXTRACT(n.terms,'$.name')) AS name,n.agreement_no AS number,n.revision,n.version,n.status,CAST(n.store_id AS CHAR) AS storeId,JSON_UNQUOTE(JSON_EXTRACT(n.terms,'$.startDate')) AS startDate,JSON_UNQUOTE(JSON_EXTRACT(n.terms,'$.endDate')) AS endDate";if(q!=null){condition+=" AND (JSON_UNQUOTE(JSON_EXTRACT(n.terms,'$.name')) LIKE ? ESCAPE '!' OR n.agreement_no LIKE ? ESCAPE '!')";args.add(like(q));args.add(like(q));}}
-            case "units" -> {require("catalog.configure","goods.read");from=" FROM li_goods_unit n JOIN li_p0_catalog_control c ON c.object_type='UNIT' AND c.object_id=n.id WHERE n.delete_flag=0";columns="CAST(n.id AS CHAR) AS id,n.name,c.enabled,c.version";if(q!=null){condition+=" AND n.name LIKE ? ESCAPE '!'";args.add(like(q));}}
+            case "units" -> {require("catalog.configure","goods.read","goods.review");from=" FROM li_goods_unit n JOIN li_p0_catalog_control c ON c.object_type='UNIT' AND c.object_id=n.id WHERE n.delete_flag=0";columns="CAST(n.id AS CHAR) AS id,n.name,c.enabled,c.version";if(q!=null){condition+=" AND n.name LIKE ? ESCAPE '!'";args.add(like(q));}}
             case "channel-configs" -> {require("channel.configure","channel.onboard","channel.receiver");from=" FROM li_p0_channel_config n WHERE n.environment=?";args.add(settings.getEnvironment());columns="CAST(n.id AS CHAR) AS id,n.name,n.mode,n.environment,n.enabled,n.config_version AS version,n.check_state AS status";if(q!=null){condition+=" AND n.name LIKE ? ESCAPE '!'";args.add(like(q));}}
             case "receivers" -> {require("channel.receiver");Stage1Exception.require(config!=null,422,"CONFIG_REQUIRED");from=" FROM li_p0_receiver_relation n JOIN li_p0_channel_config c ON c.id=n.config_id WHERE n.config_id=? AND c.environment=?";args.add(config);args.add(settings.getEnvironment());columns="CAST(n.id AS CHAR) AS id,n.display_name AS name,n.mode,n.enabled,n.state AS status,n.version,CAST(n.config_id AS CHAR) AS configId";if(q!=null){condition+=" AND n.display_name LIKE ? ESCAPE '!'";args.add(like(q));}}
             default -> throw new Stage1Exception(404,"RESOURCE_NOT_FOUND");

@@ -30,6 +30,10 @@ public class ManagerWebSupport {
     @org.springframework.beans.factory.annotation.Autowired(required=false)
     public cn.lili.modules.community.p0.support.Stage1ManagerNavigation stage1;
 
+    @org.springframework.beans.factory.annotation.Autowired(required=false)
+    public NativeManagerAccess nativeManager;
+    public boolean scoped() { return active() && nativeManager==null; }
+
     public static boolean active() {
         var auth = SecurityContextHolder.getContext().getAuthentication();
         return auth != null && auth.isAuthenticated()

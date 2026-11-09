@@ -35,6 +35,7 @@ public class MenuManagerController {
     @Autowired(required = false)
     private ManagerWebSupport managerWeb;
 
+    private Menu clean(Menu input,String id){Menu menu=new Menu();menu.setId(id);menu.setName(input.getName());menu.setTitle(input.getTitle());menu.setPath(input.getPath());menu.setFrontRoute(input.getFrontRoute());menu.setPermission(input.getPermission());menu.setParentId(input.getParentId());menu.setLevel(input.getLevel());menu.setSortOrder(input.getSortOrder());return menu;}
     @Operation(description = "搜索菜单")
     @Parameter(name = "searchParams", description = "查询参数")
     @GetMapping
@@ -47,11 +48,8 @@ public class MenuManagerController {
     @PostMapping
     @DemoSite
     public ResultMessage<Menu> add(Menu menu) {
-        try {
-            menuService.saveOrUpdateMenu(menu);
-        } catch (Exception e) {
-            log.error("添加菜单错误", e);
-        }
+        if(managerWeb!=null&&managerWeb.nativeManager!=null){menu=clean(menu,null);managerWeb.nativeManager.validateMenu(menu);}
+        menuService.saveOrUpdateMenu(menu);
         return ResultUtil.data(menu);
     }
 
@@ -60,6 +58,7 @@ public class MenuManagerController {
     @PutMapping("/{id}")
     @DemoSite
     public ResultMessage<Menu> edit(@PathVariable String id, Menu menu) {
+        if(managerWeb!=null&&managerWeb.nativeManager!=null){managerWeb.nativeManager.reference("menu",id);menu=clean(menu,id);managerWeb.nativeManager.validateMenu(menu);}
         menu.setId(id);
         menuService.saveOrUpdateMenu(menu);
         return ResultUtil.data(menu);
@@ -77,7 +76,7 @@ public class MenuManagerController {
     @Operation(description = "获取所有菜单")
     @GetMapping("/tree")
     public ResultMessage<List<MenuVO>> getAllMenuList() {
-        if (ManagerWebSupport.active()) {
+        if (managerWeb != null && managerWeb.scoped()) {
             if (managerWeb == null) throw new cn.lili.common.exception.ServiceException("CONFIG_REQUIRED");
             return ResultUtil.data(ManagerWebSupport.tree(managerWeb.policy.menuTreeNodes(managerWeb.actor())));
         }
@@ -87,7 +86,9 @@ public class MenuManagerController {
     @Operation(description = "获取所有菜单--根据当前用户角色")
     @GetMapping("/memberMenu")
     public ResultMessage<List<MenuVO>> memberMenu() {
-        if (ManagerWebSupport.active()) {
+        if(ManagerWebSupport.active() && managerWeb!=null && managerWeb.nativeManager!=null)
+            return ResultUtil.data(ManagerWebSupport.tree(managerWeb.nativeManager.navigation(managerWeb.actor())));
+        if (managerWeb != null && managerWeb.scoped()) {
             if (managerWeb == null) throw new cn.lili.common.exception.ServiceException("CONFIG_REQUIRED");
             return ResultUtil.data(ManagerWebSupport.tree(managerWeb.stage1!=null?managerWeb.stage1.menus(managerWeb.actor()):managerWeb.policy.current(managerWeb.actor()).menus()));
         }

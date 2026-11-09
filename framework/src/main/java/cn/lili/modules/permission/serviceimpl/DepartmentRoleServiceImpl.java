@@ -23,6 +23,7 @@ import java.util.List;
 @Service
 public class DepartmentRoleServiceImpl extends ServiceImpl<DepartmentRoleMapper, DepartmentRole> implements DepartmentRoleService {
 
+    @Autowired(required=false) private cn.lili.modules.permission.manager.NativeManagerAccess nativeManager;
     @Autowired
     private Cache cache;
 
@@ -40,7 +41,15 @@ public class DepartmentRoleServiceImpl extends ServiceImpl<DepartmentRoleMapper,
         queryWrapper.eq("department_id", departmentId);
         this.remove(queryWrapper);
 
-        this.saveBatch(departmentRoles);
+        if (departmentRoles == null || departmentRoles.size()>100) throw new cn.lili.common.exception.ServiceException(cn.lili.common.enums.ResultCode.PARAMS_ERROR);
+        if(nativeManager!=null)nativeManager.reference("department",departmentId);
+        var ids=new java.util.HashSet<String>();var replacements=new java.util.ArrayList<DepartmentRole>();
+        for(var relation:departmentRoles){
+            if(relation==null||!departmentId.equals(relation.getDepartmentId())||relation.getRoleId()==null||!relation.getRoleId().matches("[0-9]{1,19}")||!ids.add(relation.getRoleId()))throw new cn.lili.common.exception.ServiceException(cn.lili.common.enums.ResultCode.PARAMS_ERROR);
+            if(nativeManager!=null)nativeManager.reference("role",relation.getRoleId());
+            replacements.add(new DepartmentRole(relation.getRoleId(),departmentId));
+        }
+        if(!replacements.isEmpty()&&!this.saveBatch(replacements))throw new cn.lili.common.exception.ServiceException(cn.lili.common.enums.ResultCode.ERROR);
         cache.vagueDel(CachePrefix.USER_MENU.getPrefix(UserEnums.MANAGER));
         cache.vagueDel(CachePrefix.PERMISSION_LIST.getPrefix(UserEnums.MANAGER));
     }

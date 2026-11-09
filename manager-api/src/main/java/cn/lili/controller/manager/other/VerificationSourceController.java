@@ -34,6 +34,7 @@ public class VerificationSourceController {
 
     @Autowired
     private VerificationService verificationService;
+    @Autowired(required=false) private cn.lili.modules.community.p0.uat.UatVerificationResources uatResources;
 
     @GetMapping("/{id}")
     @Operation(summary = "查看验证码资源维护详情")
@@ -49,6 +50,7 @@ public class VerificationSourceController {
                                                               SearchVO searchVo,
                                                               PageVO page) {
         IPage<VerificationSource> data = verificationSourceService.getByPage(entity, searchVo, page);
+        if(uatResources!=null)data.getRecords().forEach(uatResources::preview);
         return ResultUtil.data(data);
     }
 
@@ -57,7 +59,9 @@ public class VerificationSourceController {
     @Parameter(description = "验证码资源信息", required = true)
     @DemoSite
     public ResultMessage<VerificationSource> save(VerificationSource verificationSource) {
+        if(uatResources!=null)verificationSource.setId(null);
 
+        if(uatResources!=null)verificationSource=uatResources.writable(verificationSource,verificationSource.getId());
         verificationService.checkCreateVerification(verificationSource.getType(), verificationSource.getResource());
         verificationSourceService.save(verificationSource);
         verificationSourceService.initCache();
@@ -70,6 +74,7 @@ public class VerificationSourceController {
     @DemoSite
     public ResultMessage<VerificationSource> update(@Parameter(description = "验证码资源ID", required = true) @PathVariable String id, VerificationSource verificationSource) {
         verificationSource.setId(id);
+        if(uatResources!=null)cn.lili.modules.community.p0.uat.UatVerificationResources.requireRemaining(verificationSourceService.list(),List.of(id),verificationSource);
         verificationService.checkCreateVerification(verificationSource.getType(), verificationSource.getResource());
         verificationSourceService.updateById(verificationSource);
         verificationSourceService.initCache();
@@ -82,6 +87,7 @@ public class VerificationSourceController {
     @DemoSite
     public ResultMessage<Object> delAllByIds(@PathVariable List<String> ids) {
 
+        if(uatResources!=null)cn.lili.modules.community.p0.uat.UatVerificationResources.requireRemaining(verificationSourceService.list(),ids,null);
         verificationSourceService.removeByIds(ids);
         verificationSourceService.initCache();
         return ResultUtil.success();

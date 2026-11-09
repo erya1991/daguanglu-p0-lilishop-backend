@@ -34,7 +34,7 @@ public class UserRoleManagerController {
     @Parameter(name = "userId", description = "管理员ID", required = true)
     @GetMapping("/{userId}")
     public ResultMessage<List<UserRole>> get(@PathVariable String userId) {
-        if (ManagerWebSupport.active()) {
+        if (managerWeb != null && managerWeb.scoped()) {
             if (managerWeb == null) throw new cn.lili.common.exception.ServiceException("CONFIG_REQUIRED");
             return ResultUtil.data(managerWeb.policy.userRoles(managerWeb.actor(), userId));
         }
@@ -45,7 +45,10 @@ public class UserRoleManagerController {
     public ResultMessage<Object> updateScoped(@PathVariable String userId, @RequestBody Object payload) {
         if (!ManagerWebSupport.active() || managerWeb == null)
             throw new cn.lili.common.exception.ServiceException(cn.lili.common.enums.ResultCode.USER_AUTHORITY_ERROR);
-        managerWeb.maintenance.replaceUserRoles(managerWeb.actor(), userId, ManagerWebSupport.ids(payload, "roleIds"));
+        var ids=ManagerWebSupport.ids(payload,"roleIds");
+        if(managerWeb.nativeManager!=null) {
+            userRoleService.updateUserRole(userId,ids.stream().map(id->new UserRole(userId,id)).toList());
+        } else managerWeb.maintenance.replaceUserRoles(managerWeb.actor(), userId, ids);
         return ResultUtil.success();
     }
 
@@ -53,7 +56,7 @@ public class UserRoleManagerController {
     @Parameter(name = "userId", description = "管理员ID", required = true)
     @PutMapping("/{userId}")
     public ResultMessage<UserRole> update(@PathVariable String userId, List<UserRole> userRole) {
-        if (ManagerWebSupport.active())
+        if (managerWeb != null && managerWeb.scoped())
             throw new cn.lili.common.exception.ServiceException(cn.lili.common.enums.ResultCode.USER_AUTHORITY_ERROR);
         userRoleService.updateUserRole(userId, userRole);
         return ResultUtil.success();

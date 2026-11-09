@@ -28,6 +28,12 @@ import java.util.List;
 public class DepartmentManagerController {
     @Autowired
     private DepartmentService departmentService;
+    @Autowired(required=false) private cn.lili.modules.permission.manager.NativeManagerAccess nativeAccess;
+    private Department clean(Department input,String id){
+        String parent=input.getParentId()==null?"0":input.getParentId();java.util.Set<String> seen=new java.util.HashSet<>();if(id!=null)seen.add(id);String current=parent;
+        while(!"0".equals(current)){if(seen.size()>32||!seen.add(current))throw new cn.lili.common.exception.ServiceException(cn.lili.common.enums.ResultCode.PARAMS_ERROR);nativeAccess.reference("department",current);current=departmentService.getById(current).getParentId();}
+        Department value=new Department();value.setId(id);value.setTitle(input.getTitle());value.setParentId(parent);value.setSortOrder(input.getSortOrder());return value;
+    }
 
     @Operation(description = "查看部门详情")
     @Parameter(name = "id", description = "部门ID", required = true)
@@ -51,6 +57,7 @@ public class DepartmentManagerController {
     @Operation(description = "新增部门")
     @Parameter(name = "department", description = "部门参数", required = true)
     public ResultMessage<Department> save(@Validated Department department) {
+        if(nativeAccess!=null)department=clean(department,null);
         departmentService.save(department);
         return ResultUtil.data(department);
     }
@@ -60,6 +67,8 @@ public class DepartmentManagerController {
     @Parameter(name = "id", description = "部门ID", required = true)
     @Parameter(name = "department", description = "部门参数", required = true)
     public ResultMessage<Department> update(@PathVariable String id, @Validated Department department) {
+        if(nativeAccess!=null){nativeAccess.reference("department",id);department=clean(department,id);}
+        department.setId(id);
         departmentService.updateById(department);
         return ResultUtil.data(department);
     }

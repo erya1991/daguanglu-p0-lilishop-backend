@@ -15,7 +15,7 @@ import static cn.lili.modules.community.p0.support.Stage1Json.*;
 import static cn.lili.modules.community.p0.presentation.ManagerPresentationViews.*;
 
 @Service
-@ConditionalOnProperty(name="p0.stage1.enabled",havingValue="true")
+@cn.lili.modules.community.p0.support.P0BusinessEnabled
 @org.springframework.context.annotation.Conditional(ManagerPresentationCondition.class)
 @Transactional(readOnly=true)
 public class ManagerPresentationService {

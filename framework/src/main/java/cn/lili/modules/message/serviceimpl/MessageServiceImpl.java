@@ -25,6 +25,8 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class MessageServiceImpl extends ServiceImpl<MessageMapper, Message> implements MessageService {
 
+    @Autowired(required=false)
+    private cn.lili.modules.community.p0.uat.UatNativeMessageDelivery uatDelivery;
     @Autowired
     private LiliMessageTemplate liliMessageTemplate;
     @Autowired
@@ -40,6 +42,12 @@ public class MessageServiceImpl extends ServiceImpl<MessageMapper, Message> impl
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Boolean sendMessage(Message message) {
+        if (uatDelivery != null) {
+            Message safe=uatDelivery.prepare(message);
+            if (!this.save(safe)) throw new IllegalStateException("NATIVE_MESSAGE_SAVE_FAILED");
+            uatDelivery.deliver(safe);
+            return true;
+        }
         //保存站内信信息
         this.save(message);
         //发送站内信消息提醒
@@ -53,6 +61,8 @@ public class MessageServiceImpl extends ServiceImpl<MessageMapper, Message> impl
         //只有查询到此记录才真实删除，未找到记录则直接返回true即可
         Message message = this.getById(id);
         if (message != null) {
+            if(uatDelivery!=null && !java.util.Set.of("member","store").contains(message.getMessageClient()==null?"":message.getMessageClient()))
+                throw new cn.lili.common.exception.ServiceException("P0_MESSAGE_HISTORY_PROTECTED");
             return this.removeById(id);
         }
         return true;

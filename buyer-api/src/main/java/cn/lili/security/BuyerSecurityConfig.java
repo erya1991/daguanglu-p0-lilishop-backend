@@ -52,7 +52,7 @@ public class BuyerSecurityConfig {
         String[] ignored = ignoredUrlsProperties.getUrls().toArray(new String[0]);
         http.securityMatcher("/buyer/**")
             .authorizeHttpRequests(a -> a
-                .requestMatchers(HttpMethod.POST, SessionRoutes.RESIDENT_LOGIN).permitAll()
+                .requestMatchers(HttpMethod.POST, SessionRoutes.RESIDENT_LOGIN, "/buyer/passport/uat/login").permitAll()
                 .requestMatchers(SessionRoutes.RESIDENT_LOGIN).denyAll()
                 .requestMatchers(req -> SessionRoutes.residentWritePath(req.getRequestURI()))
                     .hasAuthority("ROLE_STAGE0_RESIDENT")

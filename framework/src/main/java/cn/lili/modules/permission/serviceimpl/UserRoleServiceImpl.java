@@ -28,6 +28,7 @@ import java.util.Set;
 @Service
 public class UserRoleServiceImpl extends ServiceImpl<UserRoleMapper, UserRole> implements UserRoleService {
 
+    @Autowired(required=false) private cn.lili.modules.permission.manager.NativeManagerAccess nativeManager;
     @Autowired
     private Cache cache;
 
@@ -52,6 +53,7 @@ public class UserRoleServiceImpl extends ServiceImpl<UserRoleMapper, UserRole> i
         if (userId == null || userId.isBlank() || userRoles == null) {
             throw new ServiceException(ResultCode.PARAMS_ERROR);
         }
+        if(nativeManager!=null){nativeManager.reference("user",userId);if(userRoles.size()>100)throw new ServiceException(ResultCode.PARAMS_ERROR);for(var relation:userRoles)if(relation!=null)nativeManager.reference("role",relation.getRoleId());}
         List<UserRole> replacements = new ArrayList<>(userRoles.size());
         Set<String> roleIds = new HashSet<>();
         for (UserRole relation : userRoles) {

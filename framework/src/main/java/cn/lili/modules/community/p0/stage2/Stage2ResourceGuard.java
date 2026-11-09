@@ -15,6 +15,7 @@ public class Stage2ResourceGuard implements SmartInitializingSingleton {
     public Stage2ResourceGuard(Stage1Db db, Stage2Settings settings, Environment env) { this.db=db; this.settings=settings; this.env=env; }
     @Override public void afterSingletonsInstantiated() {
         try {
+            if(settings.isUatResourceMode()||env.getProperty("p0.uat.enabled",Boolean.class,false)){cn.lili.modules.community.p0.uat.UatResourceScope.verify(db,settings,env);return;}
             if(settings.isStage45ResourceMode()){cn.lili.modules.community.p0.stage45.Stage45ResourceScope.verify(db,settings,env);return;}
             if(env.getProperty("p0.stage45.enabled",Boolean.class,false))throw new IllegalStateException();
             if(settings.isStage3ResourceMode()){cn.lili.modules.community.p0.stage3.Stage3ResourceScope.verify(db,settings,env);return;}

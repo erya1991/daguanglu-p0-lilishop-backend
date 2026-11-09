@@ -25,5 +25,15 @@ class AdminAccountSafetyTest {
   var input=new AdminUser();input.setId("101");input.setUsername("ordinary");input.setPassword("injected");input.setIsSuper(true);input.setStatus(false);
   s.updateAdminUser(input,List.of());assertFalse(current.getIsSuper());assertTrue(current.getStatus());assertEquals("retained-hash",current.getPassword());assertEquals("",current.getRoleIds());verify(grants).remove(any(com.baomidou.mybatisplus.core.conditions.Wrapper.class));verify(cache,times(2)).vagueDel(anyString());
  }
+ @Test void blankDepartmentClearsExistingAssignmentUsingNativeNumericRoot(){for(String blank:Arrays.asList(null,"","  ")){var s=service();var current=new AdminUser();current.setId("101");current.setDepartmentId("123");doReturn(current).when(s).getById("101");doReturn(true).when(s).updateById(any(AdminUser.class));var input=new AdminUser();input.setId("101");input.setDepartmentId(blank);s.updateAdminUser(input,null);assertEquals("0",current.getDepartmentId());}}
  @Test void absentRolesPreserveExistingRelations(){var s=service();var current=new AdminUser();current.setId("101");current.setRoleIds("unchanged");doReturn(current).when(s).getById("101");doReturn(true).when(s).updateById(any(AdminUser.class));var input=new AdminUser();input.setId("101");s.updateAdminUser(input,null);assertEquals("unchanged",current.getRoleIds());verifyNoInteractions(grants);}
+ @Test void resetCreatesIndependentPasswordsAndInvalidatesAllCredentialFamilies(){
+  var s=service();var revocation=mock(cn.lili.modules.permission.manager.ManagerCredentialRevocation.class);ReflectionTestUtils.setField(s,"credentialRevocation",revocation);
+  var a=new AdminUser();a.setId("101");a.setPassword("old");var b=new AdminUser();b.setId("102");b.setPassword("old");
+  doReturn(List.of(a,b)).when(s).listByIds(anyCollection());doReturn(true).when(s).updateBatchById(anyCollection());
+  var result=s.resetPassword(List.of("101","102"));assertEquals(2,result.size());assertNotEquals(result.get("101"),result.get("102"));assertTrue(result.values().stream().allMatch(v->v.length()>=24&&!v.equals("123456")));
+  var encoder=new BCryptPasswordEncoder();assertTrue(encoder.matches(cn.lili.common.utils.StringUtils.md5(result.get("101")),a.getPassword()));assertTrue(encoder.matches(cn.lili.common.utils.StringUtils.md5(result.get("102")),b.getPassword()));assertFalse(encoder.matches(cn.lili.common.utils.StringUtils.md5("123456"),a.getPassword()));
+  verify(revocation).invalidate(List.of("101","102"));verify(cache,times(4)).vagueDel(anyString());
+ }
+ @Test void resetRejectsMissingOrRepeatedTargets(){var s=service();assertThrows(cn.lili.common.exception.ServiceException.class,()->s.resetPassword(List.of("101","101")));doReturn(List.of()).when(s).listByIds(anyCollection());assertThrows(cn.lili.common.exception.ServiceException.class,()->s.resetPassword(List.of("101")));verify(s,never()).updateBatchById(anyCollection());}
 }

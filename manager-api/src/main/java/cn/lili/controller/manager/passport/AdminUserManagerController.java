@@ -123,6 +123,7 @@ public class AdminUserManagerController {
                 result.put("nickName", response.getNickName()); result.put("avatar", response.getAvatar());
                 result.put("status", response.getStatus()); result.put("isSuper", false);
                 result.put("sessionProtocol", ManagerSessionResponse.PROTOCOL);
+                if(managerWeb.nativeManager!=null)result.put("nativeAccess",java.util.Map.of("integration",true,"permissions",managerWeb.nativeManager.permissions(managerWeb.actor())));
                 if(managerWeb.stage1!=null)result.put("stage1",managerWeb.stage1.describe(managerWeb.actor()));
                 else result.put("stage0", managerWeb.policy.describe(managerWeb.actor()));
                 return ResultUtil.data(result);
@@ -180,8 +181,10 @@ public class AdminUserManagerController {
     @Operation(description = "重置密码")
     @DemoSite
     public ResultMessage<Object> resetPassword(@PathVariable List<String> ids) {
-        adminUserService.resetPassword(ids);
-        return ResultUtil.success(ResultCode.USER_EDIT_SUCCESS);
+        var response=((org.springframework.web.context.request.ServletRequestAttributes)org.springframework.web.context.request.RequestContextHolder.currentRequestAttributes()).getResponse();
+        response.setHeader("Cache-Control","no-store");
+        response.setHeader("Pragma","no-cache");
+        return ResultUtil.data(adminUserService.resetPassword(ids));
     }
 
     @GetMapping("/getByCondition")
@@ -189,7 +192,7 @@ public class AdminUserManagerController {
     public ResultMessage<IPage<AdminUserVO>> getByCondition(AdminUserDTO user,
                                                             SearchVO searchVo,
                                                             PageVO pageVo) {
-        if (ManagerWebSupport.active()) {
+        if (managerWeb != null && managerWeb.scoped()) {
             if (managerWeb == null) throw new ServiceException("CONFIG_REQUIRED");
             return ResultUtil.data(ManagerWebSupport.page(managerWeb.policy.users(managerWeb.actor()), pageVo));
         }
@@ -220,7 +223,7 @@ public class AdminUserManagerController {
     @Operation(description = "禁/启 用 用户")
     @DemoSite
     public ResultMessage<Object> disable(@Parameter(description = "用户唯一id标识") @PathVariable String userId, Boolean status) {
-        if (ManagerWebSupport.active()) {
+        if (managerWeb != null && managerWeb.scoped()) {
             if (managerWeb == null) throw new ServiceException("CONFIG_REQUIRED");
             managerWeb.maintenance.setEnabled(managerWeb.actor(), userId, ManagerWebSupport.status(status));
             return ResultUtil.success();

@@ -27,6 +27,15 @@ public class MessageManagerController {
     private MessageService messageService;
 
 
+    @Autowired(required=false)
+    private cn.lili.modules.community.p0.uat.UatNativeMessageDelivery uatDelivery;
+
+    @GetMapping("/recipients")
+    public ResultMessage<?> recipients(@RequestParam String client) {
+        if(uatDelivery==null) throw new cn.lili.common.exception.ServiceException("UAT_MODE_REQUIRED");
+        return ResultUtil.data(uatDelivery.recipients(client));
+    }
+
     @GetMapping
     @Operation(summary = "多条件分页获取")
     public ResultMessage<IPage<Message>> getByCondition(MessageVO messageVO,

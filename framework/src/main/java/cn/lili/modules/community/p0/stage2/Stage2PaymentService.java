@@ -69,7 +69,7 @@ public class Stage2PaymentService {
     private JsonObject request(String trade,Map<String,Object> state){
         var suborders=new ArrayList<Object>();String platform=null,app=null;long total=0;
         for(var row:db.rows("SELECT * FROM li_p0_order_snapshot WHERE trade_id=? ORDER BY store_id",trade)){var snapshot=object(row.get("payload_json"));var relation=snapshot.getAsJsonObject("funds").getAsJsonObject("channel");String thisPlatform=relation.get("provider_mchid").getAsString(),thisApp=relation.get("payment_appid").getAsString();if(platform!=null)Stage1Exception.require(platform.equals(thisPlatform)&&app.equals(thisApp),409,"CHANNEL_SET_CONFLICT");platform=thisPlatform;app=thisApp;
-            long amount=number(row,"amount_cent");total=Stage2Money.add(total,amount);var child=map("orderId",id(row,"order_id"),"storeId",id(row,"store_id"),"subNo","S2S"+id(row,"order_id"),"subMchid",relation.get("sub_mchid"),"amountCent",amount);if(settings.isStage45ResourceMode())child.put("profitSharing",true);suborders.add(child);}
+            long amount=number(row,"amount_cent");total=Stage2Money.add(total,amount);var child=map("orderId",id(row,"order_id"),"storeId",id(row,"store_id"),"subNo","S2S"+id(row,"order_id"),"subMchid",relation.get("sub_mchid"),"amountCent",amount);if(settings.isStage45ResourceMode()||settings.isUatResourceMode())child.put("profitSharing",true);suborders.add(child);}
         Stage1Exception.require(total==number(state,"amount_cent"),409,"AMOUNT_INVARIANT");
         return object(map("mode","MOCK","combineNo","S2C"+trade,"tradeId",trade,"payerMemberId",member(state),"platformMerchantId",platform,"applicationId",app,"currency","CNY","amountCent",total,"subOrders",suborders,"expiresAt",instant(state.get("pay_deadline"))));
     }

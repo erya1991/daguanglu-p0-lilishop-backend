@@ -12,5 +12,6 @@ class SystemLogRedactionTest {
   assertFalse(log.getRequestParam().contains("secret-"));assertTrue(log.getRequestParam().contains("operator"));assertTrue(log.getRequestParam().contains("123"));
   assertEquals("secret-password",params.get("password")[0]);
  }
+ @Test void structuredSettingsCannotExposeNestedCredentials(){var log=new SystemLogVO();log.setMapToParams(java.util.Map.of("settingValue",new String[]{"{\"nested\":{\"password\":\"not-for-log\"}}"}));assertFalse(log.getRequestParam().contains("not-for-log"));}
  @Test void missingParametersDoNotBreakLogging(){var log=new SystemLogVO();assertDoesNotThrow(()->log.setMapToParams(null));}
 }

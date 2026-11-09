@@ -64,6 +64,11 @@ public class AdminUserServiceImpl extends ServiceImpl<AdminUserMapper, AdminUser
     private ManagerTokenGenerate managerTokenGenerate;
     @Autowired
     private Cache cache;
+    @Autowired(required=false)
+    private cn.lili.modules.permission.manager.ManagerCredentialRevocation credentialRevocation;
+    @Autowired(required=false)
+    private cn.lili.modules.permission.manager.NativeManagerAccess nativeAccess;
+    private String department(String id){String value=id==null||id.isBlank()?"0":id;if(nativeAccess!=null&&!value.equals("0"))nativeAccess.reference("department",value);return value;}
 
     @Override
     public IPage<AdminUserVO> adminUserPage(Page initPage, QueryWrapper<AdminUser> initWrapper) {
@@ -176,6 +181,7 @@ public class AdminUserServiceImpl extends ServiceImpl<AdminUserMapper, AdminUser
         if (adminUserIds == null || adminUserIds.isEmpty()) {
             return;
         }
+        if(credentialRevocation!=null)credentialRevocation.invalidate(adminUserIds);
         adminUserIds.forEach(adminUserId -> {
             cache.vagueDel(CachePrefix.ACCESS_TOKEN.getPrefix(UserEnums.MANAGER, adminUserId));
             cache.vagueDel(CachePrefix.REFRESH_TOKEN.getPrefix(UserEnums.MANAGER, adminUserId));
@@ -202,7 +208,7 @@ public class AdminUserServiceImpl extends ServiceImpl<AdminUserMapper, AdminUser
         current.setEmail(adminUser.getEmail());
         current.setMobile(adminUser.getMobile());
         current.setDescription(adminUser.getDescription());
-        current.setDepartmentId(adminUser.getDepartmentId());
+        current.setDepartmentId(department(adminUser.getDepartmentId()));
         if (roles != null) {
             roles = validatedRoles(roles);
             current.setRoleIds(CharSequenceUtil.join(",", roles));
@@ -225,20 +231,27 @@ public class AdminUserServiceImpl extends ServiceImpl<AdminUserMapper, AdminUser
         String newEncryptPass = new BCryptPasswordEncoder().encode(newPassword);
         user.setPassword(newEncryptPass);
         this.updateById(user);
+        logout(List.of(user.getId()));
     }
 
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public void resetPassword(List<String> ids) {
-        LambdaQueryWrapper<AdminUser> lambdaQueryWrapper = new LambdaQueryWrapper<>();
-        lambdaQueryWrapper.in(AdminUser::getId, ids);
-        List<AdminUser> adminUsers = this.list(lambdaQueryWrapper);
-        String password = StringUtils.md5("123456");
-        String newEncryptPass = new BCryptPasswordEncoder().encode(password);
-        if (null != adminUsers && !adminUsers.isEmpty()) {
-            adminUsers.forEach(item -> item.setPassword(newEncryptPass));
-            this.updateBatchById(adminUsers);
+    public java.util.Map<String,String> resetPassword(List<String> ids) {
+        if(ids==null||ids.isEmpty()||ids.size()>100||ids.stream().anyMatch(id->id==null||!id.matches("[0-9]+"))||new java.util.HashSet<>(ids).size()!=ids.size())
+            throw new ServiceException(ResultCode.PARAMS_ERROR);
+        List<AdminUser> users=this.listByIds(ids);
+        if(users.size()!=ids.size())throw new ServiceException(ResultCode.USER_NOT_EXIST);
+        var result=new java.util.LinkedHashMap<String,String>();
+        var random=new java.security.SecureRandom();
+        for(var user:users){
+            byte[] bytes=new byte[18];random.nextBytes(bytes);
+            String temporary=java.util.Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
+            user.setPassword(new BCryptPasswordEncoder().encode(StringUtils.md5(temporary)));
+            result.put(user.getId(),temporary);
         }
+        if(!this.updateBatchById(users))throw new ServiceException(ResultCode.USER_EDIT_ERROR);
+        logout(ids);
+        return java.util.Collections.unmodifiableMap(result);
     }
 
     @Override
@@ -253,7 +266,7 @@ public class AdminUserServiceImpl extends ServiceImpl<AdminUserMapper, AdminUser
         dbUser.setMobile(adminUser.getMobile());
         dbUser.setEmail(adminUser.getEmail());
         dbUser.setDescription(adminUser.getDescription());
-        dbUser.setDepartmentId(adminUser.getDepartmentId());
+        dbUser.setDepartmentId(department(adminUser.getDepartmentId()));
         dbUser.setIsSuper(false);
         dbUser.setStatus(true);
         dbUser.setDeleteFlag(false);

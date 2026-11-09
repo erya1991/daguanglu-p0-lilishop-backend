@@ -26,6 +26,9 @@ public class VerificationSource extends BaseEntity {
     @Schema(description = "资源地址")
     private String resource;
 
+    @com.baomidou.mybatisplus.annotation.TableField(exist=false)
+    private String preview;
+
     /**
      * @see VerificationSourceEnum
      */

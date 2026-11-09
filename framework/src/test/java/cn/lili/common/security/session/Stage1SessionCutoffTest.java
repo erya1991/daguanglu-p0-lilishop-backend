@@ -33,6 +33,23 @@ class Stage1SessionCutoffTest {
         var own=new MockHttpServletRequest("GET","/store/passport/applicant/identity");own.addHeader("accessToken",tokens.accessToken());var summary=new MockHttpServletResponse();filter.doFilter(own,summary,(req,res)->calls.incrementAndGet());assertEquals(1,calls.get());assertTrue(summary.getContentAsString().contains("RESTRICTED"));
         var legacy=new MockHttpServletRequest("POST","/store/passport/applicant/p0/s1/application");legacy.addHeader("accessToken","legacy-value");var denied=new MockHttpServletResponse();filter.doFilter(legacy,denied,(req,res)->calls.incrementAndGet());assertEquals(403,denied.getStatus());assertEquals(1,calls.get());
     }
+    @Test void deniedBusinessPermissionDoesNotInvalidateVerifiedLogin() throws Exception {
+        for (RuntimeException denial : List.of(new cn.lili.modules.community.p0.support.Stage1Exception(403,"FORBIDDEN"), new SessionException(SessionException.Code.DENIED))) {
+            var service=new SessionService(new Memory(),keys(),identity->{},Clock.systemUTC());
+            var identity=new SessionIdentity("123",SessionDomain.STORE,"s1_test_merchant","321",1L);var pair=service.create(identity);
+            var auth=mock(CurrentSessionAuthorization.class);var apps=new SessionApplications();apps.setMerchantApplication(identity.application());
+            when(auth.current(identity)).thenReturn(cn.lili.common.security.AuthUser.builder().id("123").role(cn.lili.common.security.enums.UserEnums.STORE).build());
+            doThrow(denial).when(auth).checkRoute(any(),eq("GET"),eq("/store/p0/s3/workbench"),eq(true));
+            var filter=new SessionHttpFilter(service,auth,apps,SessionDomain.STORE);var calls=new AtomicInteger();
+            var denied=new MockHttpServletRequest("GET","/store/p0/s3/workbench");denied.addHeader("accessToken",pair.accessToken());var response=new MockHttpServletResponse();
+            filter.doFilter(denied,response,(req,res)->calls.incrementAndGet());
+            assertEquals(403,response.getStatus());assertTrue(response.getContentAsString().contains("FORBIDDEN"));assertFalse(response.getContentAsString().contains("SESSION_REJECTED"));assertEquals(0,calls.get());
+            var self=new MockHttpServletRequest("GET","/store/member/user/info");self.addHeader("accessToken",pair.accessToken());var allowed=new MockHttpServletResponse();
+            filter.doFilter(self,allowed,(req,res)->calls.incrementAndGet());assertEquals(200,allowed.getStatus());assertEquals(1,calls.get());
+            service.revoke(service.verifyAccess(pair.accessToken(),SessionDomain.STORE,identity.application()));
+            var revoked=new MockHttpServletResponse();filter.doFilter(self,revoked,(req,res)->calls.incrementAndGet());assertEquals(403,revoked.getStatus());assertTrue(revoked.getContentAsString().contains("SESSION_REJECTED"));assertEquals(1,calls.get());
+        }
+    }
     private static SecretKeyUtil keys(){byte[] b=new byte[32];new SecureRandom().nextBytes(b);var p=new JWTTokenProperties();p.setSecretKey(Base64.getEncoder().encodeToString(b));return new SecretKeyUtil(p);}
     private static class MutableClock extends Clock {long time=System.currentTimeMillis()/1000*1000;public ZoneId getZone(){return ZoneOffset.UTC;}public Clock withZone(ZoneId zone){return this;}public Instant instant(){return Instant.ofEpochMilli(time);}public long millis(){return time;}}
     private static class Memory implements SessionService.Store {

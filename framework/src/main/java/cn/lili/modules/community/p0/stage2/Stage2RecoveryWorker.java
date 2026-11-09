@@ -17,6 +17,8 @@ import static cn.lili.modules.community.p0.support.Stage1Json.*;
 /** Only owned S2 tables/Redis; durable leases + generation fencing, no HTTP-user impersonation. */
 @Component @ConditionalOnProperty(name={"p0.stage2.enabled","p0.stage2.workers-enabled"},havingValue="true")
 public class Stage2RecoveryWorker {
+    @org.springframework.beans.factory.annotation.Autowired(required=false) private cn.lili.modules.community.p0.channel.ChannelService channels;
+    @org.springframework.beans.factory.annotation.Autowired(required=false) private cn.lili.modules.community.p0.channel.ReceiverService receivers;
     private final Stage2RecoveryScope scope;
     private final Stage2Transactions locks;private final Stage1Db db;private final Stage2Settings settings;private final Stage2TradeService trades;private final Stage2PaymentService payments;private final PersistentPaymentMock mock;private final StringRedisTemplate redis;private final TransactionTemplate tx;private final Clock clock;
     private static final DefaultRedisScript<Long> PROJECT=new DefaultRedisScript<>("local old=redis.call('GET',KEYS[2]); if old and tonumber(old)>tonumber(ARGV[1]) then return 0 end; redis.call('SET',KEYS[1],ARGV[2]); redis.call('SET',KEYS[2],ARGV[1]); return 1",Long.class);
@@ -27,6 +29,13 @@ public class Stage2RecoveryWorker {
         try{attention();for(int i=0;i<30&&one();i++){/* bounded */}}catch(RuntimeException unavailable){/* durable rows retain their leases and next attempt */}
         try{var enrolled=scope.current();var combines=db.rows("SELECT p.combine_no FROM li_p0_payment p JOIN li_p0_trade_state t ON t.trade_id=p.trade_id WHERE "+enrolled.trade("t")).stream().map(r->id(r,"combine_no")).toList();for(var event:mock.deliveries(combines)){payments.notification(event);mock.delivered(event.get("eventId").getAsString());}}catch(RuntimeException unavailable){/* channel deliveries remain pending */}
         try{for(int i=0;i<100&&invalidation();i++){/* bounded */}}catch(RuntimeException unavailable){/* outbox remains durable */}
+    }
+    @Scheduled(fixedDelayString="${p0.stage1.recovery-delay-ms:5000}",initialDelayString="${p0.stage1.recovery-delay-ms:5000}")
+    public void recoverUatChannels(){
+        if(!settings.isUatResourceMode())return;
+        try{scope.current();cn.lili.modules.community.p0.uat.UatResourceScope.registered(settings);}catch(RuntimeException rejected){return;}
+        try{if(channels!=null)channels.recoverInterrupted();}catch(RuntimeException pending){/* Original operations retain their result-unknown state. */}
+        try{if(receivers!=null)receivers.recoverInterrupted();}catch(RuntimeException pending){/* No fresh request replaces an interrupted original. */}
     }
     public void attention(){var enrolled=scope.current();db.update("UPDATE li_p0_trade_state t SET attention_at=? WHERE payment_status='UNKNOWN' AND unknown_since<=? AND attention_at IS NULL AND "+enrolled.trade("t"),clock.instant(),clock.instant().minusSeconds(120));}
     public boolean one(){var enrolled=scope.current();String lease=UUID.randomUUID().toString();var task=tx.execute(status->{var row=db.one("SELECT * FROM li_p0_s2_task WHERE run_id=? AND next_attempt_at<=? AND (status='PENDING' OR status='RUNNING' AND lease_until<=?) AND ("+enrolled.task()+") ORDER BY next_attempt_at,id LIMIT 1 FOR UPDATE SKIP LOCKED",settings.getRunId(),clock.instant(),clock.instant());if(row==null)return null;db.update("UPDATE li_p0_s2_task SET status='RUNNING',lease_owner=?,lease_until=?,attempts=attempts+1 WHERE id=?",lease,clock.instant().plusSeconds(30),row.get("id"));return row;});

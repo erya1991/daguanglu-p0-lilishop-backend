@@ -73,7 +73,8 @@ public class SystemLogVO implements Serializable {
                     || normalized.contains("apikey") || normalized.contains("authorization")
                     || normalized.equals("code") || normalized.endsWith("logincode")
                     || normalized.endsWith("phonecode") || normalized.equals("key");
-            safe.put(key, secret ? new String[]{"[REDACTED]"} : values);
+            boolean structured=values!=null&&java.util.Arrays.stream(values).anyMatch(v->v!=null&&(v.stripLeading().startsWith("{")||v.stripLeading().startsWith("[")));
+            safe.put(key, secret||structured ? new String[]{"[REDACTED]"} : values);
         });
         this.requestParam = ObjectUtil.mapToString(safe);
     }

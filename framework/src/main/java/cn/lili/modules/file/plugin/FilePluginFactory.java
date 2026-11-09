@@ -32,6 +32,8 @@ public class FilePluginFactory {
     private SettingService settingService;
     @Autowired
     private LocalFileProperties localFileProperties;
+    @Autowired private org.springframework.core.env.Environment environment;
+    @Autowired(required=false) private cn.lili.modules.community.p0.stage2.Stage2Settings stage2;
 
 
     /**
@@ -50,6 +52,12 @@ public class FilePluginFactory {
                 ossSetting = JSON.parseObject(setting.getSettingValue(), OssSetting.class);
             }
 
+            if (environment != null && environment.getProperty("p0.uat.enabled", Boolean.class, false)) {
+                var run=cn.lili.modules.community.p0.uat.UatResourceScope.registered(stage2);
+                if (!OssEnum.LOCAL.name().equals(ossSetting.getType())) throw new ServiceException("UAT_EXTERNAL_OSS_DISABLED");
+                ossSetting.setLocalFilePath(run.resolve("files/public").toString());
+                ossSetting.setLocalFileUrlPrefix("/files");
+            }
             switch (OssEnum.valueOf(ossSetting.getType())) {
 
                 case MINIO:

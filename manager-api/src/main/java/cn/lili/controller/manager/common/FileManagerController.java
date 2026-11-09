@@ -44,7 +44,7 @@ public class FileManagerController {
     @Parameter(name = "title", description = "名称模糊匹配")
     public ResultMessage<IPage<File>> getFileList(@RequestHeader String accessToken, FileOwnerDTO fileOwnerDTO) {
 
-        AuthUser authUser = UserContext.getAuthUser(cache, accessToken);
+        AuthUser authUser = UserContext.getCurrentUser();
         if (authUser == null) {
             ResponseUtil.output(ThreadContextHolder.getHttpResponse(), 403, ResponseUtil.resultMap(false,
                     403, "登录已失效，请重新登录"));
@@ -63,8 +63,9 @@ public class FileManagerController {
     @PostMapping("/rename")
     public ResultMessage<File> upload(@RequestHeader String accessToken, String id, String newName) {
 
-        AuthUser authUser = UserContext.getAuthUser(cache, accessToken);
+        AuthUser authUser = UserContext.getCurrentUser();
         File file = fileService.getById(id);
+        if (file == null || newName == null || newName.isBlank() || newName.length() > 255) throw new ServiceException(ResultCode.PARAMS_ERROR);
         file.setName(newName);
         switch (authUser.getRole()) {
             case MEMBER:
@@ -90,7 +91,7 @@ public class FileManagerController {
     @DeleteMapping("/delete/{ids}")
     public ResultMessage delete(@RequestHeader String accessToken, @PathVariable List<String> ids) {
 
-        AuthUser authUser = UserContext.getAuthUser(cache, accessToken);
+        AuthUser authUser = UserContext.getCurrentUser();
         fileService.batchDelete(ids, authUser);
         return ResultUtil.success();
     }

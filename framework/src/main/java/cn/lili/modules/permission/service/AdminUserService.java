@@ -77,7 +77,7 @@ public interface AdminUserService extends IService<AdminUser> {
      *
      * @param ids id集合
      */
-    void resetPassword(List<String> ids);
+    java.util.Map<String,String> resetPassword(List<String> ids);
 
     /**
      * 新增管理员

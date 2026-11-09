@@ -74,7 +74,7 @@ public class ManagerStoreSecurityConfig {
         String[] ignored = ignoredUrlsProperties.getUrls().toArray(new String[0]);
         http.securityMatcher("/store/**")
             .authorizeHttpRequests(a -> a
-                .requestMatchers(HttpMethod.POST, SessionRoutes.MERCHANT_LOGIN).permitAll()
+                .requestMatchers(HttpMethod.POST, SessionRoutes.MERCHANT_LOGIN, "/store/passport/uat/login").permitAll()
                 .requestMatchers(HttpMethod.POST, SessionRoutes.refresh(SessionDomain.STORE)).permitAll()
                 .requestMatchers(SessionRoutes::requiresAuthentication).authenticated()
                 .requestMatchers(ignored).permitAll()

@@ -5,7 +5,7 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
-@ConditionalOnProperty(name="p0.stage1.enabled",havingValue="true")
+@cn.lili.modules.community.p0.support.P0BusinessEnabled
 @org.springframework.context.annotation.Conditional(ManagerPresentationCondition.class)
 @RequestMapping(Stage1Routes.MANAGER+"/ui")
 public class ManagerPresentationController {

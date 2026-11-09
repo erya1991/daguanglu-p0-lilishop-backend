@@ -15,10 +15,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.StandardOpenOption;
 
 
 /**
@@ -74,28 +70,12 @@ public class WechatMessageManageController {
     @Operation(summary = "更新微信消息")
     @Parameter(name = "id", description = "微信消息ID", required = true)
     public ResultMessage<WechatMessage> update(@PathVariable String id, WechatMessage wechatMessage) {
-        // #region agent log: wechat message update entry
-        try {
-            String logPath = "d:\\lilishop_source\\lilishop\\debug-ade6ce.log";
-            String msg = "{"
-                    + "\"sessionId\":\"ade6ce\","
-                    + "\"runId\":\"toggleWechatOaClose\","
-                    + "\"hypothesisId\":\"H_UPDATE_WECHAT_MESSAGE_ENTRY\","
-                    + "\"location\":\"WechatMessageManageController:update\","
-                    + "\"message\":\"wechatMessage update payload\","
-                    + "\"data\":{\"pathId\":\"" + (id == null ? "" : id) + "\","
-                    + "\"bodyId\":\"" + (wechatMessage == null ? "" : wechatMessage.getId()) + "\","
-                    + "\"enable\":\"" + (wechatMessage == null || wechatMessage.getEnable() == null ? "" : wechatMessage.getEnable()) + "\","
-                    + "\"updateTimeIsNull\":\"" + (wechatMessage == null || wechatMessage.getUpdateTime() == null) + "\""
-                    + "},"
-                    + "\"timestamp\":" + System.currentTimeMillis()
-                    + "}\n";
-            Files.write(Path.of(logPath), msg.getBytes(StandardCharsets.UTF_8),
-                    StandardOpenOption.CREATE, StandardOpenOption.APPEND);
-        } catch (Exception ignore) {
-        }
-        // #endregion
-        wechatMessageService.updateById(wechatMessage);
+        WechatMessage safe = new WechatMessage();
+        safe.setId(id);
+        safe.setFirst(wechatMessage.getFirst());
+        safe.setRemark(wechatMessage.getRemark());
+        safe.setEnable(wechatMessage.getEnable());
+        wechatMessageService.updateById(safe);
         return ResultUtil.data(wechatMessage);
     }
 

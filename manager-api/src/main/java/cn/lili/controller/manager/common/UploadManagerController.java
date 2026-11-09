@@ -53,7 +53,7 @@ public class UploadManagerController {
 
         directoryPath = normalizeDirectoryPath(directoryPath);
 
-        AuthUser authUser = UserContext.getAuthUser(cache, accessToken);
+        AuthUser authUser = UserContext.getCurrentUser();
         if (authUser == null) {
             throw new ServiceException(ResultCode.USER_AUTHORITY_ERROR);
         }
@@ -71,6 +71,8 @@ public class UploadManagerController {
         if (CharSequenceUtil.isNotBlank(base64)) {
             file = Base64DecodeMultipartFile.base64Convert(base64);
         }
+        if (file.getSize() <= 0 || file.getSize() > 20L * 1024 * 1024) throw new ServiceException(ResultCode.FILE_TYPE_NOT_SUPPORT);
+        if (!directoryPath.matches("(?:default|0|[0-9]{1,19}(?:/[0-9]{1,19})*)")) throw new ServiceException(ResultCode.PARAMS_ERROR);
         String result;
         String fileKey = CommonUtil.rename(Objects.requireNonNull(file.getOriginalFilename()));
         File newFile = new File();

@@ -26,13 +26,24 @@ final class Stage2RecoveryScope {
             if(!file.startsWith(run) || !file.toRealPath().equals(file) || !Files.isRegularFile(file,LinkOption.NOFOLLOW_LINKS)) throw new IllegalStateException();
             byte[] bytes=Files.readAllBytes(file);
             if(!HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(bytes)).equals(expected)) throw new IllegalStateException();
-            if(expected.equals(loadedHash)) return loaded;
+            if(expected.equals(loadedHash) && !settings.isUatResourceMode()) return loaded;
             JsonObject value=object(new String(bytes,java.nio.charset.StandardCharsets.UTF_8));
             if(!settings.getRunId().equals(value.get("runId").getAsString()) || value.get("evidence").getAsString().isBlank()) throw new IllegalStateException();
             Instant since=Instant.parse(value.get("admittedAt").getAsString());
             if(since.isAfter(Instant.now().plusSeconds(5))) throw new IllegalStateException();
-            var enrollment=new Enrollment(ids(value,"members"),ids(value,"stores"),ids(value,"skus"),since);
-            if(settings.isWorkersEnabled() && (enrollment.members.isEmpty() || enrollment.stores.isEmpty() || enrollment.skus.isEmpty())) throw new IllegalStateException();
+            var members=ids(value,"members");var stores=ids(value,"stores");var skus=ids(value,"skus");
+            boolean dynamic=value.has("dynamicOwnedUat") && value.get("dynamicOwnedUat").getAsBoolean();
+            if(dynamic) {
+                cn.lili.modules.community.p0.uat.UatResourceScope.registered(settings);
+                var merchants=ids(value,"merchants");if(merchants.isEmpty())throw new IllegalStateException();
+                String merchantSql=String.join(",",merchants);
+                stores=db.rows("SELECT DISTINCT c.store_id id FROM li_p0_store_control c JOIN li_store s ON s.id=c.store_id AND s.member_id=c.owner_member_id JOIN li_p0_application a ON a.store_id=c.store_id AND a.applicant_id=c.owner_member_id WHERE c.admission_state='APPROVED' AND a.kind='ADMISSION' AND a.status='APPROVED' AND a.identity_application=? AND a.applicant_id IN ("+merchantSql+")",settings.getRunId()+"_merchant").stream().map(row->id(row,"id")).sorted().toList();
+                String storeSql=stores.isEmpty()?"NULL":String.join(",",stores);
+                skus=db.rows("SELECT c.sku_id id FROM li_p0_sku_control c JOIN li_goods_sku s ON s.id=c.sku_id AND s.store_id=c.store_id WHERE c.source_run=? AND c.store_id IN ("+storeSql+")",settings.getRunId()).stream().map(row->id(row,"id")).sorted().toList();
+                if(stores.size()>4096||skus.size()>4096||java.util.stream.Stream.concat(stores.stream(),skus.stream()).anyMatch(id->!id.matches("[1-9][0-9]{0,18}")))throw new IllegalStateException();
+            }
+            var enrollment=new Enrollment(members,stores,skus,since);
+            if(settings.isWorkersEnabled() && (enrollment.members.isEmpty() || !dynamic && (enrollment.stores.isEmpty() || enrollment.skus.isEmpty()))) throw new IllegalStateException();
             if(db.count("SELECT COUNT(*) FROM li_p0_s2_member_scope WHERE run_id=? AND permission='TRANSACT' AND member_id IN ("+enrollment.memberSql()+")",settings.getRunId())!=enrollment.members.size()) throw new IllegalStateException();
             if(db.count("SELECT COUNT(*) FROM li_p0_store_control WHERE store_id IN ("+enrollment.storeSql()+")")!=enrollment.stores.size()) throw new IllegalStateException();
             if(db.count("SELECT COUNT(*) FROM li_p0_sku_control c JOIN li_goods_sku s ON s.id=c.sku_id WHERE c.source_run=? AND c.sku_id IN ("+enrollment.skuSql()+") AND s.store_id IN ("+enrollment.storeSql()+")",settings.getRunId())!=enrollment.skus.size()) throw new IllegalStateException();

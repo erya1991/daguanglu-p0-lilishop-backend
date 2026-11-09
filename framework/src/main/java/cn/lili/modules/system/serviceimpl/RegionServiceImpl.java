@@ -105,7 +105,7 @@ public class RegionServiceImpl extends ServiceImpl<RegionMapper, Region> impleme
         LambdaQueryWrapper<Region> lambdaQueryWrapper = new LambdaQueryWrapper<>();
         lambdaQueryWrapper.eq(Region::getParentId, id);
         List<Region> regions = this.list(lambdaQueryWrapper);
-        regions.sort(Comparator.comparing(Region::getOrderNum));
+        regions.sort(Comparator.comparing(Region::getOrderNum, Comparator.nullsLast(Comparator.naturalOrder())));
         return regions;
     }
 

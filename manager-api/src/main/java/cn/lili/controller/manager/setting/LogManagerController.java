@@ -37,7 +37,7 @@ public class LogManagerController {
     @Parameter(name = "pageVo", description = "分页参数", required = false)
     @GetMapping("/getAllByPage")
     public ResultMessage<Object> getAllByPage(@RequestParam(required = false) Integer type,
-                                              @RequestParam String searchKey,
+                                              @RequestParam(defaultValue="") String searchKey,
                                               String operatorName,
                                               SearchVO searchVo,
                                               PageVO pageVo) {

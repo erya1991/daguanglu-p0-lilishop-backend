@@ -45,8 +45,8 @@ public final class SessionHttpFilter extends OncePerRequestFilter {
         String method = request.getMethod();
         String token = request.getHeader(SecurityEnum.HEADER_TOKEN.getValue());
         try {
-            if (method.equals("POST") && ((domain == SessionDomain.RESIDENT && path.equals(SessionRoutes.RESIDENT_LOGIN))
-                    || (domain == SessionDomain.STORE && path.equals(SessionRoutes.MERCHANT_LOGIN))
+            if (method.equals("POST") && ((domain == SessionDomain.RESIDENT && (path.equals(SessionRoutes.RESIDENT_LOGIN)||path.equals("/buyer/passport/uat/login")))
+                    || (domain == SessionDomain.STORE && (path.equals(SessionRoutes.MERCHANT_LOGIN)||path.equals("/store/passport/uat/login")))
                     || (domain == SessionDomain.MANAGER && path.equals(SessionRoutes.MANAGER_LOGIN)))) {
                 SecurityContextHolder.clearContext(); // Fresh Code login is independent of an old Access header.
                 chain.doFilter(request, response);
@@ -94,7 +94,7 @@ public final class SessionHttpFilter extends OncePerRequestFilter {
             for (String selector : List.of("memberId", "userId", "applicantId", "storeId", "clerkId", "role", "isSuper", "appId")) {
                 boolean storeFilter=selector.equals("storeId")&&domain==SessionDomain.MANAGER&&method.equals("GET")
                         &&List.of("/manager/p0/s3/trades","/manager/p0/s3/verifications").contains(path);
-                require(storeFilter || request.getParameter(selector) == null);
+                require(storeFilter || domain==SessionDomain.MANAGER && cn.lili.modules.permission.manager.NativeManagerRoutes.targetParameter(method,path,selector) || request.getParameter(selector) == null);
                 // P05 rejects merchant selectors here; retain the existing Resident/Manager error contracts.
                 if (domain == SessionDomain.APPLICANT || domain == SessionDomain.STORE || domain == SessionDomain.MANAGER) {
                     require(request.getHeader(selector) == null);
@@ -110,7 +110,17 @@ public final class SessionHttpFilter extends OncePerRequestFilter {
                         case MANAGER -> UserEnums.MANAGER;
                         default -> throw new SessionException(DENIED);
                     });
-            authorization.checkRoute(user, method, path, true);
+            try {
+                authorization.checkRoute(user, method, path, true);
+            } catch (cn.lili.modules.community.p0.support.Stage1Exception denied) {
+                if (denied.status() != 403) throw denied;
+                rejectPermission(response, method, path);
+                return;
+            } catch (SessionException denied) {
+                if (denied.getCode() != DENIED) throw denied;
+                rejectPermission(response, method, path);
+                return;
+            }
             var principal = new Principal(verified, user);
             var authentication = new UsernamePasswordAuthenticationToken(verified.identity().subject(), null,
                     List.of(new SimpleGrantedAuthority("ROLE_STAGE0_" + domain.name())));
@@ -139,6 +149,13 @@ public final class SessionHttpFilter extends OncePerRequestFilter {
                     SessionSecurityAudit.Reason.UNEXPECTED_FAILURE, 403);
             reject(response, 403); // No credential, input body, parser cause or URI in diagnostics.
         }
+    }
+
+    // A verified identity without this action keeps its login; no business handler runs.
+    private void rejectPermission(HttpServletResponse response, String method, String path) {
+        SessionSecurityAudit.rejected(response, domain, SessionSecurityAudit.action(domain, method, path),
+                SessionSecurityAudit.Reason.DENIED, 403);
+        reject(response, 403, "FORBIDDEN");
     }
 
     public static boolean verifiedRequest() {

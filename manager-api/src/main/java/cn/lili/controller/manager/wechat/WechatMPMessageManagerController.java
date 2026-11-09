@@ -15,10 +15,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.StandardOpenOption;
 
 
 /**
@@ -55,7 +51,9 @@ public class WechatMPMessageManagerController {
     @Parameter(name = "page", description = "分页参数", required = true)
     public ResultMessage<IPage<WechatMPMessage>> getByPage(WechatMPMessage entity,
                                                            SearchVO searchVo,
-                                                           PageVO page) {
+                                                           PageVO page, @RequestParam(required=false) Boolean enable) {
+        // Entity defaults are creation defaults, not implicit list filters.
+        entity.setEnable(enable);
         IPage<WechatMPMessage> data = wechatMPMessageService.getByPage(entity, searchVo, page);
         return new ResultUtil<IPage<WechatMPMessage>>().setData(data);
     }
@@ -75,28 +73,10 @@ public class WechatMPMessageManagerController {
     @Parameter(name = "id", description = "微信小程序消息订阅ID", required = true)
     @Parameter(name = "wechatMPMessage", description = "微信小程序消息订阅参数", required = true)
     public ResultMessage<WechatMPMessage> update(@PathVariable String id, WechatMPMessage wechatMPMessage) {
-        // #region agent log: wechat mp message update entry
-        try {
-            String logPath = "d:\\lilishop_source\\lilishop\\debug-ade6ce.log";
-            String msg = "{"
-                    + "\"sessionId\":\"ade6ce\","
-                    + "\"runId\":\"toggleWechatMpClose\","
-                    + "\"hypothesisId\":\"H_UPDATE_WECHAT_MP_ENTRY\","
-                    + "\"location\":\"WechatMPMessageManagerController:update\","
-                    + "\"message\":\"wechatMPMessage update payload\","
-                    + "\"data\":{\"pathId\":\"" + (id == null ? "" : id) + "\","
-                    + "\"bodyId\":\"" + (wechatMPMessage == null ? "" : wechatMPMessage.getId()) + "\","
-                    + "\"enable\":\"" + (wechatMPMessage == null || wechatMPMessage.getEnable() == null ? "" : wechatMPMessage.getEnable()) + "\","
-                    + "\"updateTimeIsNull\":\"" + (wechatMPMessage == null || wechatMPMessage.getUpdateTime() == null) + "\""
-                    + "},"
-                    + "\"timestamp\":" + System.currentTimeMillis()
-                    + "}\n";
-            Files.write(Path.of(logPath), msg.getBytes(StandardCharsets.UTF_8),
-                    StandardOpenOption.CREATE, StandardOpenOption.APPEND);
-        } catch (Exception ignore) {
-        }
-        // #endregion
-        wechatMPMessageService.updateById(wechatMPMessage);
+        WechatMPMessage safe = new WechatMPMessage();
+        safe.setId(id);
+        safe.setEnable(wechatMPMessage.getEnable());
+        wechatMPMessageService.updateById(safe);
         return ResultUtil.data(wechatMPMessage);
     }
 
