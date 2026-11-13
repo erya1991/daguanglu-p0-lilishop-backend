@@ -204,7 +204,12 @@ class ResidentWechatLoginTest {
         assertThrows(SessionException.class, () -> login.login("synthetic-code"));
         assertEquals(1, db.committedMembers.size()); assertEquals(1, db.committedMappings.size());
         assertTrue(sessionsBySid.isEmpty());
-        doReturn(true).when(redis).create(any());
+        doAnswer(i -> {
+            assertNull(db.pending.get(), "Session must be created AFTER commit");
+            SessionRecord record = i.getArgument(0);
+            assertTrue(db.committedMembers.containsKey(record.identity().subject()));
+            return sessionsBySid.putIfAbsent(record.sid(), record) == null;
+        }).when(redis).create(any());
         assertEquals(db.committedMembers.keySet().iterator().next(), login.login("fresh-code").memberId());
         assertEquals(1, db.commitsWithWrites.get());
     }

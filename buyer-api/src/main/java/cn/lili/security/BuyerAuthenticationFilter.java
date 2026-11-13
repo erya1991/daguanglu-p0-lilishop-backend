@@ -148,7 +148,7 @@ public class BuyerAuthenticationFilter extends BasicAuthenticationFilter {
 
             //校验redis中是否有权限
             if (cache.hasKey(CachePrefix.ACCESS_TOKEN.getPrefix(UserEnums.MEMBER, authUser.getId()) + jwt)) {
-                if (currentAuthorization != null) authUser = currentAuthorization.legacy(authUser);
+                if (currentAuthorization != null) authUser = currentAuthorization.legacy(authUser,claims.getIssuedAt()==null?null:claims.getIssuedAt().getTime());
                 //构造返回信息
                 List<GrantedAuthority> auths = new ArrayList<>();
                 auths.add(new SimpleGrantedAuthority("ROLE_" + authUser.getRole().name()));

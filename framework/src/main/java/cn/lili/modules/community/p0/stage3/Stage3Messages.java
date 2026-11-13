@@ -49,7 +49,7 @@ public class Stage3Messages {
         new Fields(body).only();var actor=context.current();boolean store=actor.domain()==SessionDomain.STORE;Stage1Exception.require(store||actor.domain()==SessionDomain.RESIDENT,403,"FORBIDDEN");
         if(store)Stage1Exception.require(auth.storePermissions(actor.user()).contains("message.read"),403,"FORBIDDEN");
         String domain=store?"STORE":"RESIDENT",recipient=store?actor.store():actor.id();
-        return tx.execute(status->{context.recheck(actor);var link=db.required("SELECT * FROM li_p0_s3_message_link WHERE id=? AND recipient_domain=? AND recipient_id=? FOR UPDATE",id,domain,recipient);
-            Stage1Exception.require(!id(link,"template").startsWith("S45_"),404,"RESOURCE_NOT_FOUND");orders.authorized(id(link,"order_id"),"order.read");String table=store?"li_store_message":"li_member_message";db.update("UPDATE "+table+" SET status='ALREADY_READY' WHERE id=?",link.get("native_message_id"));return map("id",id,"read",true);});
+        return tx.execute(status->{db.required("SELECT id FROM li_p0_consistency_guard WHERE id=1 FOR SHARE");context.recheck(actor);var link=db.required("SELECT * FROM li_p0_s3_message_link WHERE id=? AND recipient_domain=? AND recipient_id=? FOR UPDATE",id,domain,recipient);
+            Stage1Exception.require(!id(link,"template").startsWith("S45_"),404,"RESOURCE_NOT_FOUND");orders.authorized(id(link,"order_id"),"order.read");String table=store?"li_store_message":"li_member_message";db.update("UPDATE "+table+" SET status='ALREADY_READY' WHERE id=?",link.get("native_message_id"));context.recheck(actor);return map("id",id,"read",true);});
     }
 }

@@ -22,7 +22,8 @@ public class Stage1Mutations {
         var actor=context.current();var fields=new Fields(body);String request=fields.requestId();
         String hash=hash(map("action",action,"route",actor.method()+" "+actor.path(),"body",fields.json()));
         return tx.execute(status->{
-            boolean global=action.startsWith("channel-config.")||action.startsWith("receiver.")||action.startsWith("catalog.");
+            // Member-wide revocation must serialize with existing Stage1/2/3/45 transaction guards.
+            boolean global=action.startsWith("channel-config.")||action.startsWith("receiver.")||action.startsWith("catalog.")||action.startsWith("resident.");
             db.required("SELECT id FROM li_p0_consistency_guard WHERE id=1 "+(global?"FOR UPDATE":"FOR SHARE"));
             if(actor.domain()==SessionDomain.MANAGER)db.required("SELECT id FROM li_admin_user WHERE id=? FOR UPDATE",actor.id());
             var members=new TreeSet<String>(Comparator.comparingLong(Long::parseLong));members.addAll(affectedMembers);

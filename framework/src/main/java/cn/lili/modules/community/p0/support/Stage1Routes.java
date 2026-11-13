@@ -11,6 +11,13 @@ public final class Stage1Routes {
     public record Route(SessionDomain domain,String method,String template,String action,Pattern pattern) { }
     private static final List<Route> ROUTES=new ArrayList<>();
     static {
+        add(SessionDomain.MANAGER,"POST","/residents/search","resident.read");
+        add(SessionDomain.MANAGER,"GET","/residents/{id}","resident.read");
+        add(SessionDomain.MANAGER,"GET","/residents/{id}/orders","resident.read");
+        add(SessionDomain.MANAGER,"GET","/residents/{id}/aftersales","resident.read");
+        add(SessionDomain.MANAGER,"GET","/residents/{id}/impact","resident.manage");
+        add(SessionDomain.MANAGER,"POST","/residents/{id}/disable","resident.manage");
+        add(SessionDomain.MANAGER,"POST","/residents/{id}/enable","resident.manage");
         add(SessionDomain.STORE,"PUT","/goods/{id}/stock","stock.write");
         read(SessionDomain.MANAGER,"ui/stage2-goods","goods.read");
         add(SessionDomain.MANAGER,"GET","/ui/stage2-stores","goods.read");

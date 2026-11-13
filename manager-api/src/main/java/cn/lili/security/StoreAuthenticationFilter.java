@@ -136,7 +136,7 @@ public class StoreAuthenticationFilter extends BasicAuthenticationFilter {
     
             //校验redis中是否有权限
             if (cache.hasKey(CachePrefix.ACCESS_TOKEN.getPrefix(UserEnums.STORE, authUser.getId()) + jwt)) {
-                if (currentAuthorization != null) authUser = currentAuthorization.legacy(authUser);
+                if (currentAuthorization != null) authUser = currentAuthorization.legacy(authUser,claims.getIssuedAt()==null?null:claims.getIssuedAt().getTime());
                 //用户角色
                 List<GrantedAuthority> auths = new ArrayList<>();
                 auths.add(new SimpleGrantedAuthority("ROLE_" + authUser.getRole().name()));

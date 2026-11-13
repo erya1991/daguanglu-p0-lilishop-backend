@@ -27,6 +27,7 @@ final class Stage1ReceiptPolicy {
             default->false;
         };
         else if(domain==SessionDomain.MANAGER)allowed=switch(command){
+            case "resident.disable","resident.enable"->grants.contains("resident.manage");
             case "application.approve","application.reject","qualification.revoke"->grants.contains("admission.review");
             case "store.close","store.reopen"->grants.contains("store.read");
             case "agreement.create","agreement.draft","agreement.confirm","agreement.cancel","agreement.terminate"->grants.contains("agreement.read");

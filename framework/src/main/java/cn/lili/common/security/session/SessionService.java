@@ -50,14 +50,23 @@ public final class SessionService {
 
     public SessionTokens create(SessionIdentity trustedIdentity) {
         if (trustedIdentity == null) throw new SessionException(INVALID_CONTEXT);
+        long issuedAt = clock.millis(); // Before authorization: a concurrent revocation fences this login too.
         authorize(trustedIdentity);
-        return createAuthorized(trustedIdentity);
+        SessionTokens tokens=createAuthorized(trustedIdentity,issuedAt);
+        try {
+            authenticate(tokens.accessToken(),ACCESS,trustedIdentity.domain(),trustedIdentity.application());
+            return tokens;
+        } catch(RuntimeException failure) {
+            discard(trustedIdentity,tokens);
+            throw failure;
+        }
     }
 
     /** Narrow P03 handoff: normal Access/Refresh still reject the persisted PENDING mapping.
      * Caller commits DONE/ACTIVE before returning these tokens. No generic bypass or new Refresh path. */
     public SessionTokens handoff(SessionHandoff change) {
         try {
+            long issuedAt=clock.millis();
             if(change==null || change.source()==null || change.target()==null
                     || change.source().domain()!=SessionDomain.RESIDENT || change.target().domain()!=SessionDomain.RESIDENT
                     || !change.source().application().equals(change.target().application())
@@ -75,22 +84,35 @@ public final class SessionService {
                     throw new SessionException(STORE_UNAVAILABLE);
                 }
             }
-            return createAuthorized(change.target());
+            SessionTokens tokens=createAuthorized(change.target(),issuedAt);
+            try {
+                var record=store.load(change.target().domain(),change.target().application(),tokens.sid());
+                if(record==null)throw new SessionException(STORE_UNAVAILABLE);
+                authorization.checkRecord(record); // Mapping may still be PENDING, but the member cutoff applies.
+                return tokens;
+            } catch(RuntimeException failure) {discard(change.target(),tokens);throw failure;}
         } catch(SessionException e) {throw new SessionException(e.getCode());}
         catch(RuntimeException e) {throw new SessionException(DENIED);}
     }
 
-    private SessionTokens createAuthorized(SessionIdentity trustedIdentity) {
-        long now = now();
+    private SessionTokens createAuthorized(SessionIdentity trustedIdentity,long issuedAt) {
+        long now = Math.floorDiv(issuedAt,1000)*1000;
         long absolute = now + trustedIdentity.domain().absoluteLifetime().toMillis();
         long accessExpires = Math.min(now + ACCESS_MILLIS, absolute);
+        if(clock.millis()>=accessExpires)throw new SessionException(STORE_UNAVAILABLE);
         String sid = credentials.sid();
         SessionTokens tokens = issue(sid, trustedIdentity, 0, now, accessExpires, absolute);
         var record = new SessionRecord(1, sid, trustedIdentity, SessionRecord.Status.ACTIVE, 0,
                 SessionCredentials.digest(tokens.accessToken()), SessionCredentials.digest(tokens.refreshToken()),
-                now, accessExpires, absolute, clock.millis());
+                now, accessExpires, absolute, issuedAt);
         if (!store.create(record)) throw new SessionException(STORE_UNAVAILABLE);
         return tokens;
+    }
+
+    private void discard(SessionIdentity identity,SessionTokens tokens) {
+        // A rejected credential is never returned; best-effort removal is not the authorization boundary.
+        try {var record=store.load(identity.domain(),identity.application(),tokens.sid());if(record!=null)store.revoke(record);}
+        catch(RuntimeException ignored) { }
     }
 
     public VerifiedSession verifyAccess(String token, SessionDomain expectedDomain, String trustedApplication) {

@@ -9,4 +9,5 @@ public interface SessionAccessExtension {
     void checkManager(String id);
     boolean checkRoute(AuthUser user, String method, String path, boolean verified);
     void checkRecord(SessionRecord record);
+    default void checkLegacy(AuthUser user, Long issuedAt) { }
 }

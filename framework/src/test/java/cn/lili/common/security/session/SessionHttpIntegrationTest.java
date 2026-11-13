@@ -52,6 +52,46 @@ class SessionHttpIntegrationTest {
         RequestContextHolder.resetRequestAttributes();
     }
 
+    @Test void memberWideCutoffRejectsBothDomainsAccessAndRefreshAfterReenable() throws Exception {
+        var f=new Fixture();var cutoff=new java.util.concurrent.atomic.AtomicLong(-1);
+        var db=mock(cn.lili.modules.community.p0.support.Stage1Db.class,inv->{
+            if(inv.getMethod().getName().equals("one"))return cutoff.get()<0?null:Map.of("session_cutoff",cutoff.get());
+            if(inv.getMethod().getName().equals("rows"))return List.of();
+            return RETURNS_DEFAULTS.answer(inv);
+        });
+        var access=new cn.lili.modules.community.p0.support.Stage1Access(db,new cn.lili.modules.community.p0.support.Stage1Settings(),mock(MerchantGrantMapper.class));
+        org.springframework.test.util.ReflectionTestUtils.setField(access,"nativeManager",mock(cn.lili.modules.permission.manager.NativeManagerAccess.class));
+        f.authorization.setSessionAccessExtension(access);
+        var resident=f.issue(SessionDomain.RESIDENT);var merchant=f.issue(SessionDomain.STORE);
+        assertEquals(200,f.read(SessionDomain.RESIDENT,resident.accessToken()).response.getStatus());
+        assertEquals(200,f.read(SessionDomain.STORE,merchant.accessToken()).response.getStatus());
+        f.clock.advance(Duration.ofMillis(1));cutoff.set(f.clock.millis());f.member.setDisabled(false);
+        for(var token:List.of(resident,merchant)){
+            var domain=token==resident?SessionDomain.RESIDENT:SessionDomain.STORE;
+            assertEquals(403,f.read(domain,token.accessToken()).response.getStatus());
+            assertEquals(403,f.refresh(domain,token.refreshToken()).response.getStatus());
+        }
+        f.member.setDisabled(true); // Reenable cannot revive the original sessions.
+        assertEquals(403,f.read(SessionDomain.RESIDENT,resident.accessToken()).response.getStatus());
+        assertEquals(403,f.refresh(SessionDomain.STORE,merchant.refreshToken()).response.getStatus());
+        f.clock.advance(Duration.ofSeconds(1));var fresh=f.issue(SessionDomain.RESIDENT);
+        assertEquals(200,f.read(SessionDomain.RESIDENT,fresh.accessToken()).response.getStatus());
+    }
+
+    @Test void loginStartedBeforeDisableCannotIssueUsableSessionAfterReenable() {
+        var f=new Fixture();var cutoff=new java.util.concurrent.atomic.AtomicLong(-1);
+        var db=mock(cn.lili.modules.community.p0.support.Stage1Db.class,inv->{
+            if(inv.getMethod().getName().equals("one"))return cutoff.get()<0?null:Map.of("session_cutoff",cutoff.get());
+            if(inv.getMethod().getName().equals("rows"))return List.of();return RETURNS_DEFAULTS.answer(inv);
+        });
+        var access=new cn.lili.modules.community.p0.support.Stage1Access(db,new cn.lili.modules.community.p0.support.Stage1Settings(),mock(MerchantGrantMapper.class));
+        org.springframework.test.util.ReflectionTestUtils.setField(access,"nativeManager",mock(cn.lili.modules.permission.manager.NativeManagerAccess.class));
+        f.authorization.setSessionAccessExtension(access);var calls=new AtomicInteger();
+        when(f.members.getById("synthetic-actor")).thenAnswer(inv->{if(calls.incrementAndGet()==1){f.clock.advance(Duration.ofMillis(1));cutoff.set(f.clock.millis());}return f.member;});
+        assertThrows(SessionException.class,()->f.issue(SessionDomain.RESIDENT));
+        f.clock.advance(Duration.ofSeconds(1));assertDoesNotThrow(()->f.issue(SessionDomain.RESIDENT));
+    }
+
     @Test void managerStoreFilterIsAnObjectFilterOnlyOnFiniteStage3ReadRoutes() throws Exception {
         var f=new Fixture();var pair=f.issue(SessionDomain.MANAGER);
         for(String route:List.of("/manager/p0/s3/trades","/manager/p0/s3/verifications")) {

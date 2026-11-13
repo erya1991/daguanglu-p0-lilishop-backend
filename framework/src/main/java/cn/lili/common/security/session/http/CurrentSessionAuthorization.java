@@ -103,7 +103,11 @@ public class CurrentSessionAuthorization implements SessionAuthorization {
     }
 
     public AuthUser legacy(AuthUser tokenUser) {
+        return legacy(tokenUser,null);
+    }
+    public AuthUser legacy(AuthUser tokenUser,Long issuedAt) {
         require(tokenUser != null && tokenUser.getRole() != null);
+        if(extension!=null)extension.checkLegacy(tokenUser,issuedAt);
         AuthUser current = switch (tokenUser.getRole()) {
             case MANAGER -> manager(tokenUser.getId());
             case MEMBER -> resident(member(tokenUser.getId()));

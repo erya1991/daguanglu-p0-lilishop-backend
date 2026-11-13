@@ -142,8 +142,17 @@ public class Stage1Access implements SessionAccessExtension, MerchantLifecyclePo
     @Override public void checkRecord(SessionRecord record){
         checkIssuedAt(record.identity(),record.issuedAt());
     }
+    @Override public void checkLegacy(AuthUser user,Long issuedAt){
+        if(nativeManager==null||user==null||!Set.of(UserEnums.MEMBER,UserEnums.STORE).contains(user.getRole()))return;
+        var security=db.one("SELECT session_cutoff FROM li_p0_member_security WHERE member_id=?",user.getId());
+        if(security!=null)deny(issuedAt!=null&&issuedAt>number(security,"session_cutoff"));
+    }
     public void checkIssuedAt(SessionIdentity identity,long createdAt){
         if(nativeManager!=null&&identity.domain()==SessionDomain.MANAGER)nativeManager.checkIssuedAt(identity.subject(),createdAt);
+        if(nativeManager!=null&&identity.domain()!=SessionDomain.MANAGER){
+            var security=db.one("SELECT session_cutoff FROM li_p0_member_security WHERE member_id=?",identity.subject());
+            if(security!=null)deny(createdAt>number(security,"session_cutoff"));
+        }
         if(identity.domain()!=SessionDomain.STORE)return;
         var cutoffs=db.rows("SELECT c.closed_at,k.session_cutoff FROM li_clerk n JOIN li_p0_store_control c ON c.store_id=n.store_id LEFT JOIN li_p0_clerk_control k ON k.clerk_id=n.id WHERE n.member_id=?",identity.subject());
         for(var row:cutoffs)for(String key:List.of("closed_at","session_cutoff")) {
