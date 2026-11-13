@@ -27,6 +27,8 @@ public class WechatIdentityService {
     private final ResidentWechatProperties properties;
     private final MerchantWechatProperties merchant;
     private final TransactionTemplate transaction;
+    @org.springframework.beans.factory.annotation.Autowired(required=false)
+    private cn.lili.modules.community.p0.uat.ServerWechatResidentEnrollment testEnrollment;
 
     @org.springframework.beans.factory.annotation.Autowired
     public WechatIdentityService(WechatIdentityMapper mappings, MemberMapper members,
@@ -65,6 +67,7 @@ public class WechatIdentityService {
                 mapping.setBindingVersion(1L); mapping.setBindingState("ACTIVE");
                 mapping.setCreateTime(new Date()); mapping.setUpdateTime(mapping.getCreateTime());
                 if (mappings.insert(mapping) != 1) throw new ResidentLoginException(LOGIN_UNAVAILABLE);
+                if (domain == SessionDomain.RESIDENT && testEnrollment != null) testEnrollment.registerNew(member.getId());
                 return checked(mapping, identity.appId(), identity.openId(), "ACTIVE", domain);
             }); // execute returns only after the transaction manager successfully commits.
         } catch (DuplicateKeyException race) {

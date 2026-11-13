@@ -1,0 +1,9 @@
+{
+  "residentAppId": "",
+  "residentAppSecret": "",
+  "merchantAppId": "",
+  "merchantAppSecret": "",
+  "publicOrigin": "https://your-test-host.example",
+  "managerPort": 19790,
+  "buyerPort": 19791
+}

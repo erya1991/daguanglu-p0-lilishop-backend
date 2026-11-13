@@ -1,0 +1,5 @@
+# Preserve the exact, previously executed migration bytes and plan digest.
+deployment/uat-schema/database/**/*.sql -text
+deployment/uat-schema/tools/ddl-plan.tsv -text
+deployment/uat-schema/tools/ddl-plan-v2.tsv -text
+deployment/uat-schema/tools/*.sh text eol=lf

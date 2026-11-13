@@ -1,0 +1,11 @@
+[
+  "cn.lili.modules.community.p0.stage2.Stage2PaymentFactsTest",
+  "cn.lili.modules.community.p0.stage2.Stage2RecoveryScopeTest",
+  "cn.lili.modules.community.p0.stage2.Stage2ServerRecoveryScopeTest",
+  "cn.lili.modules.community.p0.stage3.Stage3EligibilityTest",
+  "cn.lili.modules.community.p0.stage3.Stage3CryptoTest",
+  "cn.lili.modules.community.p0.stage45.Stage45WechatFundsTest",
+  "cn.lili.modules.community.p0.uat.UatResourceScopeServerTest",
+  "cn.lili.modules.connect.wechat.ResidentWechatLoginTest",
+  "cn.lili.modules.community.p0.uat.ServerUatAdmissionTest"
+]

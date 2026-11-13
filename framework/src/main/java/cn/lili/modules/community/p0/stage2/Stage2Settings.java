@@ -11,6 +11,13 @@ public class Stage2Settings {
     private boolean stage3ResourceMode;
     private boolean stage45ResourceMode;
     private boolean uatResourceMode;
+    /** Explicit separate TEST/MOCK server mode; local UAT remains the default. */
+    private boolean serverUatMode;
+    private String serverUatRoot;
+    private int serverMysqlPort = 19706;
+    private int serverRedisPort = 19779;
+    public int uatMysqlPort() { return serverUatMode ? serverMysqlPort : 19706; }
+    public int uatRedisPort() { return serverUatMode ? serverRedisPort : 19779; }
     private String environment = "TEST";
     private String mode = "MOCK";
     private String runId;

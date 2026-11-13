@@ -1,0 +1,3 @@
+-- Apply only to owned dgl_p0_s2_mock, separate from business transactions.
+CREATE TABLE li_p0_mock_payment (combine_no VARCHAR(64) PRIMARY KEY, request_hash CHAR(64) NOT NULL, request_json JSON NOT NULL, state VARCHAR(24) NOT NULL, scenario VARCHAR(32) NOT NULL DEFAULT 'SUCCESS', result_json JSON NULL, version BIGINT NOT NULL DEFAULT 0, created_at DATETIME(6) NOT NULL, expires_at DATETIME(6) NOT NULL) ENGINE=InnoDB;
+CREATE TABLE li_p0_mock_delivery (event_id VARCHAR(100) PRIMARY KEY, combine_no VARCHAR(64) NOT NULL, payload_json JSON NOT NULL, due_at DATETIME(6) NOT NULL, attempts INT NOT NULL DEFAULT 0, status VARCHAR(16) NOT NULL DEFAULT 'PENDING', KEY ix_delivery_due(status,due_at)) ENGINE=InnoDB;

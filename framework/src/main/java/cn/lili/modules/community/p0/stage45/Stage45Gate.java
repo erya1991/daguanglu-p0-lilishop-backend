@@ -23,6 +23,7 @@ public class Stage45Gate {
     private void check(String action,boolean enabled) {
         Stage1Exception.require(enabled,503,"STAGE45_WRITES_DISABLED");
         predecessor.requireWrites();
+        if(resources.isServerUatMode())return;
         try {
             Path run=Path.of(resources.getFileRoot()).toRealPath().getParent();
             Path file=Path.of(settings.getAuthorizationFile()).toRealPath();

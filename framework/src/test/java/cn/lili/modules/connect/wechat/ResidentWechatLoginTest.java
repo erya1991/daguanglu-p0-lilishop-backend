@@ -111,6 +111,19 @@ class ResidentWechatLoginTest {
         verify(memberService, never()).autoRegister(any()); verify(memberService, never()).findByMobile(anyString());
         assertEquals(1, db.commitsWithWrites.get());
     }
+    @Test void serverEnrollmentRunsOnlyForNewIdentityAndFailureRollsBackLogin() {
+        var enrollment=mock(cn.lili.modules.community.p0.uat.ServerWechatResidentEnrollment.class);
+        org.springframework.test.util.ReflectionTestUtils.setField(identities,"testEnrollment",enrollment);
+        var first=login.login("first");
+        login.login("again");
+        verify(enrollment,times(1)).registerNew(first.memberId());
+        when(gateway.authenticate(anyString())).thenReturn(new WechatCodeGateway.Identity(apps.getResidentApplication(),"another-open",null));
+        doThrow(new IllegalStateException("enrollment-failed")).when(enrollment).registerNew(anyString());
+        assertThrows(ResidentLoginException.class,()->login.login("another"));
+        assertEquals(1,db.committedMembers.size());
+        assertEquals(1,db.committedMappings.size());
+        assertEquals(2,sessionsBySid.size());
+    }
     @Test void concurrentFirstLoginRollsBackEveryLosingMemberThenReadsWinner() throws Exception {
         db.firstReadBarrier = new CyclicBarrier(6);
         try (var pool = Executors.newFixedThreadPool(6)) {

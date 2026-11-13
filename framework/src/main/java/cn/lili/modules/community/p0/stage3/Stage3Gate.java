@@ -18,6 +18,12 @@ public class Stage3Gate {
         Stage1Exception.require(settings.isWritesEnabled(),503,"STAGE3_WRITES_DISABLED");
         try {
             Path run=Path.of(resources.getFileRoot()).toRealPath().getParent();
+            if(resources.isServerUatMode()) {
+                Path artifact=Path.of(System.getProperty("java.class.path")).toRealPath();
+                if(processArtifactHash==null) synchronized(this) {if(processArtifactHash==null)processArtifactHash=digest(Files.readAllBytes(artifact));}
+                cn.lili.modules.community.p0.uat.ServerUatAdmission.verify(resources,artifact,processArtifactHash);
+                return;
+            }
             Path file=privateFile(run,settings.getAdmissionFile());var proof=object(Files.readString(file));
             Stage1Exception.require(proof.get("stage").getAsInt()==3&&"APPROVED".equals(proof.get("status").getAsString())
                 &&resources.getRunId().equals(proof.get("runId").getAsString())&&resources.getMysqlUuid().equals(proof.get("mysqlUuid").getAsString()),503,"SC23_NOT_ADMITTED");
@@ -36,6 +42,7 @@ public class Stage3Gate {
     }
     public void requireCredentials(){
         requireWrites();Stage1Exception.require(settings.isCredentialsEnabled(),503,"CREDENTIAL_SECURITY_PENDING");
+        if(resources.isServerUatMode())return;
         try{Path run=Path.of(resources.getFileRoot()).toRealPath().getParent();var proof=object(Files.readString(privateFile(run,settings.getSecurityApprovalFile())));
             Stage1Exception.require("APPROVED".equals(proof.get("status").getAsString())&&resources.getRunId().equals(proof.get("runId").getAsString())
                 &&"S3_FIXED_128_AESGCM_HMAC_120_V1".equals(proof.get("policy").getAsString())&&proof.getAsJsonArray("artifactHashes").asList().stream().anyMatch(v->processArtifactHash.equals(v.getAsString())),503,"CREDENTIAL_SECURITY_PENDING");

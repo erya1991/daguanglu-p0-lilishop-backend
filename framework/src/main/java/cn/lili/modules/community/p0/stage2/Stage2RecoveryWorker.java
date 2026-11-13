@@ -23,6 +23,8 @@ public class Stage2RecoveryWorker {
     private final Stage2Transactions locks;private final Stage1Db db;private final Stage2Settings settings;private final Stage2TradeService trades;private final Stage2PaymentService payments;private final PersistentPaymentMock mock;private final StringRedisTemplate redis;private final TransactionTemplate tx;private final Clock clock;
     private static final DefaultRedisScript<Long> PROJECT=new DefaultRedisScript<>("local old=redis.call('GET',KEYS[2]); if old and tonumber(old)>tonumber(ARGV[1]) then return 0 end; redis.call('SET',KEYS[1],ARGV[2]); redis.call('SET',KEYS[2],ARGV[1]); return 1",Long.class);
     public Stage2RecoveryWorker(Stage2Transactions locks,Stage1Db db,Stage2Settings settings,Stage2TradeService trades,Stage2PaymentService payments,PersistentPaymentMock mock,StringRedisTemplate redis,PlatformTransactionManager manager,@Qualifier("stage1Clock")Clock clock){this.locks=locks;this.db=db;this.settings=settings;this.trades=trades;this.payments=payments;this.mock=mock;this.redis=redis;this.tx=new TransactionTemplate(manager);this.clock=clock;this.scope=new Stage2RecoveryScope(settings,db);}
+    @org.springframework.beans.factory.annotation.Autowired
+    void configureApplications(cn.lili.common.security.session.http.SessionApplications applications){scope.setApplications(applications);}
     @jakarta.annotation.PostConstruct public void validateScope(){scope.current();}
     @Scheduled(fixedDelayString="${p0.stage2.recovery-delay-ms:1000}")
     public void tick(){

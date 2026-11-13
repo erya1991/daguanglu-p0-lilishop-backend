@@ -1,0 +1,29 @@
+{
+  "purpose": "Stage1 attachment parsing: real WebP decoding and PDF structure validation",
+  "repository": "https://repo.maven.apache.org/maven2/",
+  "destination": "<owned run>/runtime/file-codecs",
+  "systemInstallation": false,
+  "sharedCacheWrites": false,
+  "frameworkUpgrade": false,
+  "artifacts": [
+    {"group":"org.apache.pdfbox","artifact":"pdfbox","version":"3.0.8","sha512":"bd59e4918285dbed5d5a5e922368b139b2d3eed3e7b1102e726bbc69041328c82175826b92f341885f17f22c7af8438f4c5e676f25b90a8c062d42b1d7e5a57c","checksumSource":"https://downloads.apache.org/pdfbox/3.0.8/pdfbox-3.0.8.jar.sha512"},
+    {"group":"org.apache.pdfbox","artifact":"pdfbox-io","version":"3.0.8","sha512":"659c72ecfa9743df09321ef594cb0e948cabff17d7aed01583f78ec344e2126e6c75506abc43bc36369c0692bf09ea9e81b956ea9a3e28af29dd5c86bae9ff7b","checksumSource":"https://downloads.apache.org/pdfbox/3.0.8/pdfbox-io-3.0.8.jar.sha512"},
+    {"group":"org.apache.pdfbox","artifact":"fontbox","version":"3.0.8","sha512":"fdc1a5bcb016280c561e20684db77cba126660872f6ad03440596b8817ed97452e80237e0c3e41f8914711dac96abb8da8d1f37014eef7a7433fff85aff953b7","checksumSource":"https://downloads.apache.org/pdfbox/3.0.8/fontbox-3.0.8.jar.sha512"},
+    {"group":"com.twelvemonkeys.imageio","artifact":"imageio-webp","version":"3.15.3","sha512":"986bc091521a2e2ecbc10b39c87bdd71bdba5c25bee14325508bb36364bdc13a2eefaebac145b0daed2ac8aeac0f48fcc306ac9c937f56ff51d69bb1268a9907"},
+    {"group":"com.twelvemonkeys.imageio","artifact":"imageio-core","version":"3.15.3","sha512":"c9d0b69b28812c7b47ab779b910455c42d89e14995ef7bc6ea78823e52f9aba534fcc188b30a1b966e9f3764422d3d4071dc6d5963622ef285b691790ebaa745"},
+    {"group":"com.twelvemonkeys.imageio","artifact":"imageio-metadata","version":"3.15.3","sha512":"6562e04a477d97754d4fbeaa0d458c1b3ddc9281a214d4d3c62283bc385caf129b25ae5724a24cbc5069e984fedd8a9d8dacdc7d748fb07359f46c54a1f02078"},
+    {"group":"com.twelvemonkeys.common","artifact":"common-lang","version":"3.15.3","sha512":"a4818bb3d3d775b525d85bb030b0981c05c68cbab31343e54384343580ce595787b866e6ac89a520d90d11fcf9949fba4185f82147702e5d2ebbba918e799609"},
+    {"group":"com.twelvemonkeys.common","artifact":"common-io","version":"3.15.3","sha512":"3bb5d838c4e18fedb900dea010be8b35b0512d6fd79bfbd44228ccf2a941c558bcd86461fb5ebf7493dbc5cacb4f5c133c6781d73e344807830d1c215d7bd7e0"},
+    {"group":"com.twelvemonkeys.common","artifact":"common-image","version":"3.15.3","sha512":"3977376f69300bea48308638ee5441d91eb1c984490780e08b3d7088a15bdc2e0f10fe3ca87f3d39e11ac4289d2ff45b6d2f65955b5870b91f96c65128ac9e64"}
+  ],
+  "fixedChecksumProvenance": {
+    "basis": "Previously authorized nine-JAR Maven Central download; six TwelveMonkeys SHA-512 values observed in the original runtime manifest and precommit review, rechecked against local bytes for this checkpoint.",
+    "originalManifest": "<owned run>/runtime/file-codecs/manifest.json",
+    "originalManifestSha256": "cb481a6e867efbf664995d362c8abf2587c29867116b8bc3c4729b96476bca00",
+    "reviewSha256": "d41b0efe3cc858f8584498964915518ed4f081dff3e983405a2afce8f8629574",
+    "newDownloadPerformed": false,
+    "publisherSignatureAudit": "NOT_PERFORMED"
+  },
+  "sources": ["https://pdfbox.apache.org/download.html","https://pdfbox.apache.org/3.0/migration.html","https://github.com/haraldk/TwelveMonkeys/releases/tag/twelvemonkeys-3.15.3"],
+  "authorization": "User explicitly approved this limited nine-JAR download in the current execution session on 2026-10-27"
+}

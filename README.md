@@ -1,5 +1,7 @@
 # Lilishop(PickMall) 开源商城系统
 
+大光路公司 Linux 开发测试部署使用 [微信登录＋Mock 商城部署说明](deployment/uat-schema/DEPLOYMENT.md)，验证范围见 [适配验证记录](deployment/uat-schema/VALIDATION.md)。本仓提供当前迁移与运行工具；真实微信凭据由部署人员在私有配置中准备，资金保持 Mock。
+
 [![GitHub Stars](https://img.shields.io/github/stars/lilishop/lilishop.svg?style=social&logo=github)](https://github.com/lilishop/lilishop)
 [![Gitee Stars](https://gitee.com/beijing_hongye_huicheng/lilishop/badge/star.svg?theme=dark)](https://gitee.com/beijing_hongye_huicheng/lilishop)
 [![License](https://img.shields.io/badge/license-AGPL--3.0-blue.svg)](./LICENSE)

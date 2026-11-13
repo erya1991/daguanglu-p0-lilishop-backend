@@ -1,0 +1,67 @@
+-- Stage1 own database only. Native identifier relationships must compare exact integer IDs.
+-- Evidence: BIGINT/VARCHAR implicit comparison matched three adjacent 18-digit role IDs.
+-- Validate every value before any persistent ALTER; native Java String IDs remain unchanged.
+CREATE TEMPORARY TABLE s1_identifier_precondition(valid BOOLEAN NOT NULL CHECK(valid=1));
+INSERT INTO s1_identifier_precondition SELECT COUNT(*)=0 FROM li_admin_user WHERE department_id IS NOT NULL AND (NOT REGEXP_LIKE(CAST(department_id AS CHAR),'^(0|[1-9][0-9]{0,18})$') OR CAST(department_id AS DECIMAL(20,0))>9223372036854775807);
+INSERT INTO s1_identifier_precondition SELECT COUNT(*)=0 FROM li_menu WHERE parent_id IS NOT NULL AND (NOT REGEXP_LIKE(CAST(parent_id AS CHAR),'^(0|[1-9][0-9]{0,18})$') OR CAST(parent_id AS DECIMAL(20,0))>9223372036854775807);
+INSERT INTO s1_identifier_precondition SELECT COUNT(*)=0 FROM li_role_menu WHERE menu_id IS NOT NULL AND (NOT REGEXP_LIKE(CAST(menu_id AS CHAR),'^(0|[1-9][0-9]{0,18})$') OR CAST(menu_id AS DECIMAL(20,0))>9223372036854775807);
+INSERT INTO s1_identifier_precondition SELECT COUNT(*)=0 FROM li_role_menu WHERE role_id IS NOT NULL AND (NOT REGEXP_LIKE(CAST(role_id AS CHAR),'^(0|[1-9][0-9]{0,18})$') OR CAST(role_id AS DECIMAL(20,0))>9223372036854775807);
+INSERT INTO s1_identifier_precondition SELECT COUNT(*)=0 FROM li_user_role WHERE role_id IS NOT NULL AND (NOT REGEXP_LIKE(CAST(role_id AS CHAR),'^(0|[1-9][0-9]{0,18})$') OR CAST(role_id AS DECIMAL(20,0))>9223372036854775807);
+INSERT INTO s1_identifier_precondition SELECT COUNT(*)=0 FROM li_user_role WHERE user_id IS NOT NULL AND (NOT REGEXP_LIKE(CAST(user_id AS CHAR),'^(0|[1-9][0-9]{0,18})$') OR CAST(user_id AS DECIMAL(20,0))>9223372036854775807);
+INSERT INTO s1_identifier_precondition SELECT COUNT(*)=0 FROM li_department WHERE parent_id IS NOT NULL AND (NOT REGEXP_LIKE(CAST(parent_id AS CHAR),'^(0|[1-9][0-9]{0,18})$') OR CAST(parent_id AS DECIMAL(20,0))>9223372036854775807);
+INSERT INTO s1_identifier_precondition SELECT COUNT(*)=0 FROM li_department_role WHERE department_id IS NOT NULL AND (NOT REGEXP_LIKE(CAST(department_id AS CHAR),'^(0|[1-9][0-9]{0,18})$') OR CAST(department_id AS DECIMAL(20,0))>9223372036854775807);
+INSERT INTO s1_identifier_precondition SELECT COUNT(*)=0 FROM li_department_role WHERE role_id IS NOT NULL AND (NOT REGEXP_LIKE(CAST(role_id AS CHAR),'^(0|[1-9][0-9]{0,18})$') OR CAST(role_id AS DECIMAL(20,0))>9223372036854775807);
+INSERT INTO s1_identifier_precondition SELECT COUNT(*)=0 FROM li_member WHERE store_id IS NOT NULL AND (NOT REGEXP_LIKE(CAST(store_id AS CHAR),'^(0|[1-9][0-9]{0,18})$') OR CAST(store_id AS DECIMAL(20,0))>9223372036854775807);
+INSERT INTO s1_identifier_precondition SELECT COUNT(*)=0 FROM li_store WHERE member_id IS NOT NULL AND (NOT REGEXP_LIKE(CAST(member_id AS CHAR),'^(0|[1-9][0-9]{0,18})$') OR CAST(member_id AS DECIMAL(20,0))>9223372036854775807);
+INSERT INTO s1_identifier_precondition SELECT COUNT(*)=0 FROM li_clerk WHERE member_id IS NOT NULL AND (NOT REGEXP_LIKE(CAST(member_id AS CHAR),'^(0|[1-9][0-9]{0,18})$') OR CAST(member_id AS DECIMAL(20,0))>9223372036854775807);
+INSERT INTO s1_identifier_precondition SELECT COUNT(*)=0 FROM li_clerk WHERE store_id IS NOT NULL AND (NOT REGEXP_LIKE(CAST(store_id AS CHAR),'^(0|[1-9][0-9]{0,18})$') OR CAST(store_id AS DECIMAL(20,0))>9223372036854775807);
+INSERT INTO s1_identifier_precondition SELECT COUNT(*)=0 FROM li_clerk WHERE department_id IS NOT NULL AND (NOT REGEXP_LIKE(CAST(department_id AS CHAR),'^(0|[1-9][0-9]{0,18})$') OR CAST(department_id AS DECIMAL(20,0))>9223372036854775807);
+INSERT INTO s1_identifier_precondition SELECT COUNT(*)=0 FROM li_clerk_role WHERE clerk_id IS NOT NULL AND (NOT REGEXP_LIKE(CAST(clerk_id AS CHAR),'^(0|[1-9][0-9]{0,18})$') OR CAST(clerk_id AS DECIMAL(20,0))>9223372036854775807);
+INSERT INTO s1_identifier_precondition SELECT COUNT(*)=0 FROM li_clerk_role WHERE role_id IS NOT NULL AND (NOT REGEXP_LIKE(CAST(role_id AS CHAR),'^(0|[1-9][0-9]{0,18})$') OR CAST(role_id AS DECIMAL(20,0))>9223372036854775807);
+INSERT INTO s1_identifier_precondition SELECT COUNT(*)=0 FROM li_store_role WHERE store_id IS NOT NULL AND (NOT REGEXP_LIKE(CAST(store_id AS CHAR),'^(0|[1-9][0-9]{0,18})$') OR CAST(store_id AS DECIMAL(20,0))>9223372036854775807);
+INSERT INTO s1_identifier_precondition SELECT COUNT(*)=0 FROM li_store_menu WHERE parent_id IS NOT NULL AND (NOT REGEXP_LIKE(CAST(parent_id AS CHAR),'^(0|[1-9][0-9]{0,18})$') OR CAST(parent_id AS DECIMAL(20,0))>9223372036854775807);
+INSERT INTO s1_identifier_precondition SELECT COUNT(*)=0 FROM li_store_menu_role WHERE role_id IS NOT NULL AND (NOT REGEXP_LIKE(CAST(role_id AS CHAR),'^(0|[1-9][0-9]{0,18})$') OR CAST(role_id AS DECIMAL(20,0))>9223372036854775807);
+INSERT INTO s1_identifier_precondition SELECT COUNT(*)=0 FROM li_store_menu_role WHERE menu_id IS NOT NULL AND (NOT REGEXP_LIKE(CAST(menu_id AS CHAR),'^(0|[1-9][0-9]{0,18})$') OR CAST(menu_id AS DECIMAL(20,0))>9223372036854775807);
+INSERT INTO s1_identifier_precondition SELECT COUNT(*)=0 FROM li_store_menu_role WHERE store_id IS NOT NULL AND (NOT REGEXP_LIKE(CAST(store_id AS CHAR),'^(0|[1-9][0-9]{0,18})$') OR CAST(store_id AS DECIMAL(20,0))>9223372036854775807);
+INSERT INTO s1_identifier_precondition SELECT COUNT(*)=0 FROM li_store_department WHERE store_id IS NOT NULL AND (NOT REGEXP_LIKE(CAST(store_id AS CHAR),'^(0|[1-9][0-9]{0,18})$') OR CAST(store_id AS DECIMAL(20,0))>9223372036854775807);
+INSERT INTO s1_identifier_precondition SELECT COUNT(*)=0 FROM li_store_department WHERE parent_id IS NOT NULL AND (NOT REGEXP_LIKE(CAST(parent_id AS CHAR),'^(0|[1-9][0-9]{0,18})$') OR CAST(parent_id AS DECIMAL(20,0))>9223372036854775807);
+INSERT INTO s1_identifier_precondition SELECT COUNT(*)=0 FROM li_store_department_role WHERE role_id IS NOT NULL AND (NOT REGEXP_LIKE(CAST(role_id AS CHAR),'^(0|[1-9][0-9]{0,18})$') OR CAST(role_id AS DECIMAL(20,0))>9223372036854775807);
+INSERT INTO s1_identifier_precondition SELECT COUNT(*)=0 FROM li_store_department_role WHERE department_id IS NOT NULL AND (NOT REGEXP_LIKE(CAST(department_id AS CHAR),'^(0|[1-9][0-9]{0,18})$') OR CAST(department_id AS DECIMAL(20,0))>9223372036854775807);
+INSERT INTO s1_identifier_precondition SELECT COUNT(*)=0 FROM li_store_detail WHERE store_id IS NOT NULL AND (NOT REGEXP_LIKE(CAST(store_id AS CHAR),'^(0|[1-9][0-9]{0,18})$') OR CAST(store_id AS DECIMAL(20,0))>9223372036854775807);
+INSERT INTO s1_identifier_precondition SELECT COUNT(*)=0 FROM li_store_detail WHERE sales_consignee_address_id IS NOT NULL AND (NOT REGEXP_LIKE(CAST(sales_consignee_address_id AS CHAR),'^(0|[1-9][0-9]{0,18})$') OR CAST(sales_consignee_address_id AS DECIMAL(20,0))>9223372036854775807);
+INSERT INTO s1_identifier_precondition SELECT COUNT(*)=0 FROM li_store_detail WHERE sales_consignor_address_id IS NOT NULL AND (NOT REGEXP_LIKE(CAST(sales_consignor_address_id AS CHAR),'^(0|[1-9][0-9]{0,18})$') OR CAST(sales_consignor_address_id AS DECIMAL(20,0))>9223372036854775807);
+INSERT INTO s1_identifier_precondition SELECT COUNT(*)=0 FROM li_goods WHERE brand_id IS NOT NULL AND (NOT REGEXP_LIKE(CAST(brand_id AS CHAR),'^(0|[1-9][0-9]{0,18})$') OR CAST(brand_id AS DECIMAL(20,0))>9223372036854775807);
+INSERT INTO s1_identifier_precondition SELECT COUNT(*)=0 FROM li_goods WHERE store_id IS NOT NULL AND (NOT REGEXP_LIKE(CAST(store_id AS CHAR),'^(0|[1-9][0-9]{0,18})$') OR CAST(store_id AS DECIMAL(20,0))>9223372036854775807);
+INSERT INTO s1_identifier_precondition SELECT COUNT(*)=0 FROM li_goods_sku WHERE brand_id IS NOT NULL AND (NOT REGEXP_LIKE(CAST(brand_id AS CHAR),'^(0|[1-9][0-9]{0,18})$') OR CAST(brand_id AS DECIMAL(20,0))>9223372036854775807);
+INSERT INTO s1_identifier_precondition SELECT COUNT(*)=0 FROM li_goods_sku WHERE goods_id IS NOT NULL AND (NOT REGEXP_LIKE(CAST(goods_id AS CHAR),'^(0|[1-9][0-9]{0,18})$') OR CAST(goods_id AS DECIMAL(20,0))>9223372036854775807);
+INSERT INTO s1_identifier_precondition SELECT COUNT(*)=0 FROM li_goods_sku WHERE store_id IS NOT NULL AND (NOT REGEXP_LIKE(CAST(store_id AS CHAR),'^(0|[1-9][0-9]{0,18})$') OR CAST(store_id AS DECIMAL(20,0))>9223372036854775807);
+INSERT INTO s1_identifier_precondition SELECT COUNT(*)=0 FROM li_goods_gallery WHERE goods_id IS NOT NULL AND (NOT REGEXP_LIKE(CAST(goods_id AS CHAR),'^(0|[1-9][0-9]{0,18})$') OR CAST(goods_id AS DECIMAL(20,0))>9223372036854775807);
+INSERT INTO s1_identifier_precondition SELECT COUNT(*)=0 FROM li_goods_search_param WHERE goods_id IS NOT NULL AND (NOT REGEXP_LIKE(CAST(goods_id AS CHAR),'^(0|[1-9][0-9]{0,18})$') OR CAST(goods_id AS DECIMAL(20,0))>9223372036854775807);
+INSERT INTO s1_identifier_precondition SELECT COUNT(*)=0 FROM li_store_address WHERE store_id IS NOT NULL AND (NOT REGEXP_LIKE(CAST(store_id AS CHAR),'^(0|[1-9][0-9]{0,18})$') OR CAST(store_id AS DECIMAL(20,0))>9223372036854775807);
+DROP TEMPORARY TABLE s1_identifier_precondition;
+ALTER TABLE li_admin_user MODIFY department_id BIGINT NULL;
+ALTER TABLE li_menu MODIFY parent_id BIGINT NULL;
+ALTER TABLE li_role_menu MODIFY menu_id BIGINT NULL, MODIFY role_id BIGINT NULL;
+ALTER TABLE li_user_role MODIFY role_id BIGINT NULL, MODIFY user_id BIGINT NULL;
+ALTER TABLE li_department MODIFY parent_id BIGINT NULL;
+ALTER TABLE li_department_role MODIFY department_id BIGINT NULL, MODIFY role_id BIGINT NULL;
+ALTER TABLE li_member MODIFY store_id BIGINT NULL;
+ALTER TABLE li_store MODIFY member_id BIGINT NULL;
+ALTER TABLE li_clerk MODIFY member_id BIGINT NULL, MODIFY store_id BIGINT NULL, MODIFY department_id BIGINT NULL;
+ALTER TABLE li_clerk_role MODIFY clerk_id BIGINT NULL, MODIFY role_id BIGINT NULL;
+ALTER TABLE li_store_role MODIFY store_id BIGINT NULL;
+ALTER TABLE li_store_menu MODIFY parent_id BIGINT NULL;
+ALTER TABLE li_store_menu_role MODIFY role_id BIGINT NULL, MODIFY menu_id BIGINT NULL, MODIFY store_id BIGINT NULL;
+ALTER TABLE li_store_department MODIFY store_id BIGINT NULL, MODIFY parent_id BIGINT NULL;
+ALTER TABLE li_store_department_role MODIFY role_id BIGINT NULL, MODIFY department_id BIGINT NULL;
+ALTER TABLE li_store_detail MODIFY store_id BIGINT NULL, MODIFY sales_consignee_address_id BIGINT NULL, MODIFY sales_consignor_address_id BIGINT NULL;
+ALTER TABLE li_goods MODIFY brand_id BIGINT NULL, MODIFY store_id BIGINT NULL;
+ALTER TABLE li_goods_sku MODIFY brand_id BIGINT NULL, MODIFY goods_id BIGINT NULL, MODIFY store_id BIGINT NULL;
+ALTER TABLE li_goods_gallery MODIFY goods_id BIGINT NULL;
+ALTER TABLE li_goods_search_param MODIFY goods_id BIGINT NOT NULL;
+ALTER TABLE li_store_address MODIFY store_id BIGINT NULL;
+-- Exact adjacent-role regression: each direct assignment has exactly one matching native role.
+CREATE TEMPORARY TABLE s1_identifier_postcondition(valid BOOLEAN NOT NULL CHECK(valid=1));
+INSERT INTO s1_identifier_postcondition SELECT COUNT(*)=0 FROM (SELECT ur.id,COUNT(r.id) AS n FROM li_user_role ur JOIN li_role r ON r.id=ur.role_id GROUP BY ur.id HAVING n<>1) invalid;
+DROP TEMPORARY TABLE s1_identifier_postcondition;
+
