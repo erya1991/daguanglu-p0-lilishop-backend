@@ -36,8 +36,8 @@ public class ResidentManagerService {
         var f=new Fields(input).only("memberId","nickname","mobile","status","pageNumber","pageSize");
         String id=f.id("memberId",false),name=f.text("nickname",1,100,false),mobile=f.text("mobile",1,32,false);
         String status=f.choice("status",Set.of("ACTIVE","DISABLED"),false);
-        long page=Optional.ofNullable(f.integer("pageNumber",1,100000,true)).orElse(1L);
-        long size=Optional.ofNullable(f.integer("pageSize",1,100,true)).orElse(20L);
+        long page=Optional.ofNullable(f.integer("pageNumber",1,100000,false)).orElse(1L);
+        long size=Optional.ofNullable(f.integer("pageSize",1,100,false)).orElse(20L);
         if(mobile!=null&&!mobile.matches("[0-9]{6,20}"))throw Stage1Exception.field("mobile","INVALID_FORMAT");
         String app=residentApp();var args=new ArrayList<Object>();args.add(app);
         String where=" FROM li_member m WHERE m.delete_flag=0 AND EXISTS (SELECT 1 FROM li_wechat_identity w WHERE w.member_id=m.id AND w.app_id=? AND w.binding_state IN ('ACTIVE','PENDING'))";

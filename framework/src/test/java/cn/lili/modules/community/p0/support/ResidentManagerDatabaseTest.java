@@ -83,6 +83,9 @@ class ResidentManagerDatabaseTest {
         var actor=new Stage1Context.Actor(new SessionIdentity("900001",SessionDomain.MANAGER,"manager",null,null),null,"POST","/manager/p0/s1/residents/search");
         var context=mock(Stage1Context.class);when(context.require(SessionDomain.MANAGER)).thenReturn(actor);
         var service=new ResidentManagerService(db,context,mock(Stage1Mutations.class),apps(),Clock.systemUTC());
+        Map<?,?> defaults=(Map<?,?>)service.search(Map.of("pageNumber",1));
+        assertEquals(20L,defaults.get("pageSize"));assertTrue((Long)defaults.get("total")>=2);
+        assertThrows(Stage1Exception.class,()->service.search(Map.of("pageNumber",1,"pageSize",101)));
         Map<?,?> absent=(Map<?,?>)service.search(Map.of("memberId","900013","pageNumber",1,"pageSize",20));assertEquals(0L,absent.get("total"));
         Map<?,?> pending=(Map<?,?>)service.search(Map.of("memberId","900014","pageNumber",1,"pageSize",20));
         assertEquals(1L,pending.get("total"));assertEquals("PENDING",((Map<?,?>)((List<?>)pending.get("records")).getFirst()).get("bindingStatus"));
@@ -95,6 +98,9 @@ class ResidentManagerDatabaseTest {
         var context=mock(Stage1Context.class);when(context.require(SessionDomain.MANAGER)).thenReturn(actor);
         var service=new ResidentManagerService(db,context,mock(Stage1Mutations.class),apps(),Clock.systemUTC());
         var mvc=org.springframework.test.web.servlet.setup.MockMvcBuilders.standaloneSetup(new ResidentManagerController(service)).setControllerAdvice(new Stage1Responses()).build();
+        mvc.perform(post("/manager/p0/s1/residents/search").contentType("application/json").content("{\"pageNumber\":1}"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.result.pageSize").value(20))
+                .andExpect(jsonPath("$.result.total").isNumber());
         mvc.perform(post("/manager/p0/s1/residents/search").contentType("application/json").content("{\"mobile\":\"13812345678\",\"pageNumber\":1,\"pageSize\":20}"))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.result.total").value(1))
                 .andExpect(jsonPath("$.result.records[0].mobileMasked").value("138****5678"))
